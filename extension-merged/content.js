@@ -793,6 +793,7 @@
     });
 
     isHintsVisible = true;
+    chrome.storage.local.set({ numberedLinksEnabled: true });
     console.log(`[Handsfree] Displayed ${activeHints.length} numbered link badges`);
     return { success: true, count: activeHints.length };
   }
@@ -803,6 +804,7 @@
     }
     activeHints = [];
     isHintsVisible = false;
+    chrome.storage.local.set({ numberedLinksEnabled: false });
     return { success: true };
   }
 
@@ -1353,6 +1355,27 @@
           speakScreenText('Eyes-Free navigation active on page. Speak your commands.');
         }
       }, 700);
+    }
+  });
+
+  // Auto-Restore Numbered Links on Page Load (sticky until "hide numbered links")
+  chrome.storage.local.get(['numberedLinksEnabled'], (result) => {
+    if (!result || !result.numberedLinksEnabled) return;
+
+    let attempts = 0;
+    const tryRestore = () => {
+      attempts++;
+      const res = showNumberedLinks();
+      const found = res && res.count > 0;
+      if (!found && attempts < 15) {
+        setTimeout(tryRestore, 700);
+      }
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', tryRestore, { once: true });
+    } else {
+      tryRestore();
     }
   });
 

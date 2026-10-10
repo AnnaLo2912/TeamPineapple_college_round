@@ -4,6 +4,9 @@ import { WebcamManager } from './WebcamManager.js'
 import { initFaceTracker, detectFaceLandmarks } from './FaceTracker.js'
 import { initHandTracker, detectHandLandmarks, isHandTrackerReady } from './HandTracker.js'
 import { SpeechRecognizer } from './SpeechRecognizer.js'
+import { initVoiceEngine } from './VoiceEngine.js'
+
+initVoiceEngine()
 
 const webcam = new WebcamManager(DEFAULT_CONFIG)
 const speechRecognizer = new SpeechRecognizer((cmd) => {

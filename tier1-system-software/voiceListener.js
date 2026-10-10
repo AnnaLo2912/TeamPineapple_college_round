@@ -1,5 +1,5 @@
 import readline from 'readline'
-import { spawn } from 'child_process'
+import { spawn, execSync } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { executeCommand } from './systemActions.js'
@@ -10,6 +10,13 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 let micProcess = null
+
+export function cleanupExistingMicProcesses() {
+  try {
+    const cmd = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*listenMic.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+    execSync(`powershell.exe -NoProfile -Command "${cmd}"`, { stdio: 'ignore' })
+  } catch {}
+}
 
 /**
  * Voice & Command Dispatcher for Tier 1 System Software
@@ -74,6 +81,8 @@ export async function processVoiceInput(input) {
  * Starts native background microphone listener via Windows Speech Recognition
  */
 export function startMicrophoneListener() {
+  cleanupExistingMicProcesses()
+
   const psScriptPath = path.join(__dirname, 'listenMic.ps1')
 
   micProcess = spawn('powershell.exe', [
@@ -120,11 +129,19 @@ export function startMicrophoneListener() {
     }
   })
 
-  process.on('exit', () => {
-    if (micProcess) {
+  const killMic = () => {
+    if (micProcess && micProcess.pid) {
+      try {
+        execSync(`taskkill /pid ${micProcess.pid} /t /f`, { stdio: 'ignore' })
+      } catch {}
       try { micProcess.kill() } catch {}
+      micProcess = null
     }
-  })
+  }
+
+  process.on('exit', killMic)
+  process.on('SIGINT', () => { killMic(); process.exit(0) })
+  process.on('SIGTERM', () => { killMic(); process.exit(0) })
 }
 
 /**

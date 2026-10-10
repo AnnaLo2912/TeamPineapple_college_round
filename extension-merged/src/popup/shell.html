@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Handsfree</title>
+  <link rel="stylesheet" href="shell.css" />
+</head>
+<body>
+  <header class="shell-bar">
+    <div class="shell-tabs" role="tablist" aria-label="Control panels">
+      <button id="tabHandsfree" class="shell-tab active" data-panel="handsfree" role="tab" aria-selected="true" type="button">Cursor &amp; Hands</button>
+      <button id="tabVoice" class="shell-tab" data-panel="voice" role="tab" aria-selected="false" type="button">Voice</button>
+    </div>
+    <label class="shell-toggle" title="Enable or disable cursor and hands tracking">
+      <input type="checkbox" id="handsfreeToggle" checked />
+      <span class="shell-toggle-label">Tracking</span>
+    </label>
+  </header>
+
+  <div class="shell-panels">
+    <iframe id="panelHandsfree" class="shell-panel active" title="Cursor &amp; Hands controls" allow="camera; microphone; autoplay"></iframe>
+    <iframe id="panelVoice" class="shell-panel" title="Voice controls" allow="microphone; camera; autoplay"></iframe>
+  </div>
+
+  <script type="module" src="shell.js"></script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+.handsfree-cursor {
+  transition: left 0.01s linear, top 0.01s linear;
+}
+
+.handsfree-highlight {
+  animation: handsfree-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes handsfree-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px #4ecdc4, 0 0 12px 4px rgba(78, 205, 196, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 3px #4ecdc4, 0 0 20px 6px rgba(78, 205, 196, 0.6);
+  }
+}
+
+.handsfree-webcam-preview {
+  animation: handsfree-slide-in 0.3s ease-out;
+}
+
+@keyframes handsfree-slide-in {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.handsfree-calibration-overlay {
+  animation: handsfree-fade-in 0.2s ease-out;
+}
+
+@keyframes handsfree-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .handsfree-cursor,
+  .handsfree-highlight,
+  .handsfree-webcam-preview,
+  .handsfree-calibration-overlay {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.handsfree-cursor svg {
+  display: block;
+}
+
+.handsfree-cursor circle {
+  vector-effect: non-scaling-stroke;
+}

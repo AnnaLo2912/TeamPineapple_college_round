@@ -8,12 +8,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const startBtn = document.getElementById('startBtn');
   const stopBtn = document.getElementById('stopBtn');
   const copyBtn = document.getElementById('copyBtn');
-  
+
   const statusBadge = document.getElementById('statusBadge');
   const statusText = document.getElementById('statusText');
   const messageBox = document.getElementById('messageBox');
   const messageText = document.getElementById('messageText');
-  
+
   const transcriptBox = document.getElementById('transcriptBox');
   const transcriptText = document.getElementById('transcriptText');
   const visualizer = document.getElementById('visualizer');
@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const modeBlindBtn = document.getElementById('modeBlind');
   const blindModeToggle = document.getElementById('blindModeToggle');
   const blindModeCard = document.getElementById('blindModeCard');
+  const openGoogleBtn = document.getElementById('openGoogleBtn');
 
   // Backend Express Base URL (supports 5001 as default to prevent macOS AirPlay port 5000 conflicts, with auto-fallback)
   let backendBaseUrl = 'http://localhost:5001';
@@ -124,11 +125,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
       case State.ERROR:
         statusBadge.classList.add('status-error');
-        statusText.textContent = 'Error';
+        statusText.textContent = 'Notice';
         messageBox.classList.add('message-error');
         messageText.textContent = customMessage || 'An error occurred. Please try again.';
-        if (grantMicBtn && (customMessage.includes('tab') || customMessage.includes('permission') || customMessage.includes('denied'))) {
-          grantMicBtn.classList.remove('hidden');
+        const lowerMsg = (customMessage || '').toLowerCase();
+        if (grantMicBtn) {
+          if (lowerMsg.includes('mic permission') || lowerMsg.includes('permission denied') || lowerMsg.includes('notallowederror')) {
+            grantMicBtn.classList.remove('hidden');
+          } else {
+            grantMicBtn.classList.add('hidden');
+          }
+        }
+        if (openGoogleBtn) {
+          if (lowerMsg.includes('system') || lowerMsg.includes('chrome://') || lowerMsg.includes('restricted') || lowerMsg.includes('webstore')) {
+            openGoogleBtn.classList.remove('hidden');
+          } else {
+            openGoogleBtn.classList.add('hidden');
+          }
         }
         startBtn.disabled = false;
         stopBtn.disabled = true;
@@ -296,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       try {
         mediaRecorder.stop();
-      } catch (e) {}
+      } catch (e) { }
     }
     mediaRecorder = null;
 
@@ -304,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
       mediaStream.getTracks().forEach(track => {
         try {
           track.stop();
-        } catch (e) {}
+        } catch (e) { }
       });
       mediaStream = null;
     }
@@ -387,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clearInterval(recordingTimer);
         const actualMime = (mediaRecorder && mediaRecorder.mimeType) || (event && event.target && event.target.mimeType) || mimeType || 'audio/webm';
         recordedAudioBlob = new Blob(audioChunks, { type: actualMime });
-        
+
         // Stop hardware mic stream
         stopAudioStream();
 
@@ -396,9 +409,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (recordedAudioBlob.size === 0) {
           setUIState(State.ERROR, 'Recorded audio was empty. Please try again.');
-          if (isReadingActive) {
+          if (isReadingActive || activeMode === Mode.BLIND) {
             setTimeout(() => {
-              if (isReadingActive && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
+              if ((isReadingActive || activeMode === Mode.BLIND) && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
                 startRecording();
               }
             }, 600);
@@ -489,6 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // State Management
   let activeMode = Mode.COMMAND; // Default mode is COMMAND
   let isProcessingTranscript = false;
+  let lastDictatedSearchQuery = '';
 
   const modeCommandBtn = document.getElementById('modeCommand');
   const modeDictationBtn = document.getElementById('modeDictation');
@@ -579,6 +593,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (enabled) {
       setActiveMode(Mode.BLIND);
+      if (currentState === State.IDLE) {
+        ensureAudioContext();
+        startRecording();
+      }
     } else if (activeMode === Mode.BLIND) {
       setActiveMode(Mode.COMMAND);
     }
@@ -661,11 +679,11 @@ document.addEventListener('DOMContentLoaded', () => {
         setUIState(State.COMPLETED, 'No speech detected.');
         isProcessingTranscript = false;
 
-        // Auto re-listen if conversational reading is active
-        if (isReadingActive) {
-          console.log('[Handsfree Conversational] No speech detected. Re-listening...');
+        // Auto re-listen if conversational reading or blind mode is active
+        if (isReadingActive || activeMode === Mode.BLIND) {
+          console.log('[Handsfree] No speech detected. Re-listening...');
           setTimeout(() => {
-            if (isReadingActive && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
+            if ((isReadingActive || activeMode === Mode.BLIND) && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
               startRecording();
             }
           }, 500);
@@ -696,35 +714,35 @@ document.addEventListener('DOMContentLoaded', () => {
           setUIState(State.COMPLETED, `Blind Command: "${transcript}"`);
           executeVoiceCommand(transcript);
         } else {
-          // Speech dictation into active input (e.g. search query)
-          let trailingAction = null;
-          let dictationPayload = transcript;
+          // Check for trailing action ("search" or "done") with punctuation support
+          const trimmed = transcript.trim();
+          const trailingSearchRegex = /[\s,]+(?:search|google search|execute search|submit search)[\.\!\?,]*$/i;
+          const trailingDoneRegex = /[\s,]+(?:done|finished|done typing|query done)[\.\!\?,]*$/i;
 
-          if (/\b(?:done|finished)$/i.test(dictationPayload)) {
-            trailingAction = 'done';
-            dictationPayload = dictationPayload.replace(/\b(?:done|finished)$/i, '').trim();
-          } else if (/\b(?:search)$/i.test(dictationPayload)) {
+          let trailingAction = null;
+          let dictationPayload = trimmed;
+
+          if (trailingSearchRegex.test(trimmed)) {
             trailingAction = 'search';
-            dictationPayload = dictationPayload.replace(/\b(?:search)$/i, '').trim();
+            dictationPayload = trimmed.replace(trailingSearchRegex, '').replace(/[\s,]+$/, '').trim();
+          } else if (trailingDoneRegex.test(trimmed)) {
+            trailingAction = 'done';
+            dictationPayload = trimmed.replace(trailingDoneRegex, '').replace(/[\s,]+$/, '').trim();
           }
 
           if (dictationPayload.length > 0) {
-            const insertRes = await sendToActiveTab({ action: 'INSERT_DICTATION', text: dictationPayload });
-            if (insertRes && insertRes.success) {
-              setUIState(State.COMPLETED, `Entered: "${dictationPayload}". (Say "Done" or "Search")`);
-            } else {
-              setUIState(State.COMPLETED, `Dictated: "${dictationPayload}".`);
-            }
+            lastDictatedSearchQuery = dictationPayload;
+            await sendToActiveTab({ action: 'INSERT_DICTATION', text: dictationPayload });
           }
 
           if (trailingAction === 'done') {
-            setTimeout(() => {
-              executeVoiceCommand('done');
-            }, 300);
+            setUIState(State.COMPLETED, `Query ready: "${dictationPayload || lastDictatedSearchQuery}". Say "Search" to execute.`);
+            await sendToActiveTab({ action: 'FINISH_QUERY', query: dictationPayload || lastDictatedSearchQuery });
           } else if (trailingAction === 'search') {
-            setTimeout(() => {
-              executeVoiceCommand('search');
-            }, 400);
+            setUIState(State.COMPLETED, `Searching for "${dictationPayload || lastDictatedSearchQuery}"...`);
+            await sendToActiveTab({ action: 'EXECUTE_SEARCH', query: dictationPayload || lastDictatedSearchQuery });
+          } else {
+            setUIState(State.COMPLETED, `Entered: "${dictationPayload}". (Say "Done" or "Search")`);
           }
         }
       } else if (activeMode === Mode.DICTATION || activeMode === Mode.READING) {
@@ -819,6 +837,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
+      // Continuous loop for Eyes-Free Blind Mode
+      if (activeMode === Mode.BLIND) {
+        const isStopCmd = ['stop', 'cancel', 'stop listening', 'disable blind mode', 'exit blind mode', 'turn off blind mode'].includes(lower);
+        if (!isStopCmd) {
+          setTimeout(() => {
+            if (activeMode === Mode.BLIND && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
+              startRecording();
+            }
+          }, 850);
+        }
+      }
+
       console.log('[Handsfree] Transcription result:', data);
 
     } catch (err) {
@@ -827,6 +857,28 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       isProcessingTranscript = false;
     }
+  }
+
+  /**
+   * Safely send message to tab using callback syntax to consume chrome.runtime.lastError
+   * and prevent Chrome from logging Uncaught (in promise) Receiving end does not exist errors
+   */
+  function sendTabMessageSafe(tabId, message) {
+    return new Promise((resolve) => {
+      try {
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+          if (chrome.runtime.lastError) {
+            // Explicitly reading chrome.runtime.lastError marks it as handled in Chromium
+            const _err = chrome.runtime.lastError.message;
+            resolve(null);
+          } else {
+            resolve(response !== undefined ? response : { success: true });
+          }
+        });
+      } catch (e) {
+        resolve(null);
+      }
+    });
   }
 
   /**
@@ -843,17 +895,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return { success: false, error: 'No active tab found.' };
       }
 
-      const url = (activeTab.url || '').toLowerCase();
-      const isRestrictedUrl = 
-        url.startsWith('chrome://') || 
-        url.startsWith('chrome-extension://') || 
-        url.startsWith('chrome-search://') || 
-        url.startsWith('edge://') || 
+      const rawUrl = activeTab.url || '';
+      const url = rawUrl.toLowerCase();
+
+      // Auto-navigate to Google on New Tab pages when searching or enabling blind mode
+      if (url.startsWith('chrome://newtab') || url.startsWith('chrome-search://') || url === 'about:blank') {
+        if (message.action === 'GO_TO_SEARCH' || message.action === 'EXECUTE_SEARCH' || message.action === 'SET_BLIND_MODE') {
+          await chrome.tabs.update(activeTab.id, { url: 'https://www.google.com' });
+          return { success: true, message: 'Opening Google Search...' };
+        }
+      }
+
+      const isRestrictedUrl =
+        url.startsWith('chrome://') ||
+        url.startsWith('chrome-extension://') ||
+        url.startsWith('chrome-search://') ||
+        url.startsWith('edge://') ||
         url.startsWith('extension://') ||
         url.startsWith('brave://') ||
         url.startsWith('opera://') ||
         url.startsWith('vivaldi://') ||
-        url.startsWith('about:') || 
+        url.startsWith('about:') ||
         url.startsWith('moz-extension://') ||
         url.includes('chrome.google.com/webstore') ||
         url.includes('chromewebstore.google.com') ||
@@ -861,7 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
         url.includes('addons.mozilla.org');
 
       if (isRestrictedUrl) {
-        return { success: false, error: 'Handsfree cannot run on browser internal or extension store pages.' };
+        return { success: false, error: 'Handsfree is not supported on Chrome system or Webstore pages.' };
       }
 
       // 1. Try direct messaging
@@ -879,15 +941,28 @@ document.addEventListener('DOMContentLoaded', () => {
             target: { tabId: activeTab.id },
             files: ['content.js']
           });
-          
-          await new Promise(r => setTimeout(r, 100));
 
-          const retryResponse = await chrome.tabs.sendMessage(activeTab.id, message);
-          return retryResponse || { success: true };
+          await new Promise(r => setTimeout(r, 120));
+
+          const retryResponse = await sendTabMessageSafe(activeTab.id, message);
+          if (retryResponse) return retryResponse;
         } catch (injectErr) {
-          console.warn('[Handsfree] Content script injection failed:', injectErr);
+          console.warn('[Handsfree] Content script injection fallback:', injectErr);
+          if (message.action === 'EXECUTE_SEARCH' && message.query) {
+            await chrome.tabs.update(activeTab.id, { url: `https://www.google.com/search?q=${encodeURIComponent(message.query)}` });
+            return { success: true, message: 'Navigating to Google Search...' };
+          } else if (message.action === 'GO_TO_SEARCH') {
+            await chrome.tabs.update(activeTab.id, { url: 'https://www.google.com' });
+            return { success: true, message: 'Opening Google Search...' };
+          }
           return { success: false, error: 'Cannot access page content on this tab.' };
         }
+      }
+
+      // Final fallback for search actions
+      if (message.action === 'EXECUTE_SEARCH' && message.query) {
+        await chrome.tabs.update(activeTab.id, { url: `https://www.google.com/search?q=${encodeURIComponent(message.query)}` });
+        return { success: true, message: 'Navigating to Google Search...' };
       }
 
       return { success: false, error: 'Could not connect to active page.' };
@@ -930,7 +1005,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
       if (ttsAudioContext && ttsAudioContext.state === 'suspended') {
-        ttsAudioContext.resume().catch(() => {});
+        ttsAudioContext.resume().catch(() => { });
       }
     } catch (e) {
       console.warn('[Handsfree AudioContext] Init warning:', e);
@@ -1112,7 +1187,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (activeAudioSource) {
       try {
         activeAudioSource.stop();
-      } catch (e) {}
+      } catch (e) { }
       activeAudioSource = null;
     }
     if (ttsAudio) {
@@ -1121,13 +1196,13 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         ttsAudio.pause();
         ttsAudio.currentTime = 0;
-      } catch (e) {}
+      } catch (e) { }
       ttsAudio = null;
     }
     if (window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel();
-      } catch (e) {}
+      } catch (e) { }
     }
     isTtsSpeaking = false;
   }
@@ -1214,7 +1289,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (ttsAudio) {
       if (ttsAudio.paused) {
-        ttsAudio.play().catch(() => {});
+        ttsAudio.play().catch(() => { });
         isTtsSpeaking = true;
         updateReaderUIState('Reading...', true, true);
       } else {
@@ -1393,7 +1468,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res && res.success) {
           setUIState(State.COMPLETED, res.message || 'Search input focused. Dictate query and say "Done".');
         } else {
-          setUIState(State.ERROR, res?.error || 'Could not find search bar on page.');
+          // If on a restricted page, automatically navigate to Google Search!
+          if (res?.error && (res.error.includes('system') || res.error.includes('Chrome'))) {
+            chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+              if (tab?.id) chrome.tabs.update(tab.id, { url: 'https://www.google.com' });
+            });
+            setUIState(State.COMPLETED, 'Opening Google Search...');
+          } else {
+            setUIState(State.ERROR, res?.error || 'Could not find search bar on page.');
+          }
         }
       });
       return;
@@ -1402,9 +1485,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Dictate Search Term -> Say "Done"
     if (text === 'done' || text === 'finished' || text === 'query done' || text === 'done typing' || text === 'search done') {
       messageText.textContent = 'Command: Query finished';
-      sendToActiveTab({ action: 'FINISH_QUERY' }).then(res => {
+      sendToActiveTab({ action: 'FINISH_QUERY', query: lastDictatedSearchQuery }).then(res => {
         if (res && res.success) {
-          setUIState(State.COMPLETED, `Query ready: "${res.query || ''}". Say "Search" to execute.`);
+          setUIState(State.COMPLETED, `Query ready: "${res.query || lastDictatedSearchQuery || ''}". Say "Search" to execute.`);
         } else {
           setUIState(State.COMPLETED, 'Query finished. Say "Search" to execute.');
         }
@@ -1415,7 +1498,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Search Execution -> Say "Search"
     if (text === 'search' || text === 'execute search' || text === 'submit search' || text === 'run search' || text === 'google search') {
       messageText.textContent = 'Command: Execute search';
-      sendToActiveTab({ action: 'EXECUTE_SEARCH' }).then(res => {
+      sendToActiveTab({ action: 'EXECUTE_SEARCH', query: lastDictatedSearchQuery }).then(res => {
         if (res && res.success) {
           setUIState(State.COMPLETED, 'Search submitted.');
         } else {
@@ -1604,6 +1687,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (grantMicBtn) {
     grantMicBtn.addEventListener('click', openPermissionTab);
+  }
+
+  if (openGoogleBtn) {
+    openGoogleBtn.addEventListener('click', async () => {
+      if (chrome.tabs) {
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (activeTab && activeTab.id) {
+          await chrome.tabs.update(activeTab.id, { url: 'https://www.google.com' });
+        } else {
+          await chrome.tabs.create({ url: 'https://www.google.com' });
+        }
+      }
+    });
   }
 
   if (toggleNumbersBtn) {

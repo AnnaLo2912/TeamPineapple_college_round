@@ -1,6 +1,7 @@
-import { speak, playEarcon } from './ttsEngine.js'
+import { playEarcon } from './ttsEngine.js'
 import { isStartupEnabled, enableAutoStartup, disableAutoStartup } from './startupManager.js'
 import { startInteractiveConsole, startMicrophoneListener } from './voiceListener.js'
+import { dictateStartupScreen } from './screenDictator.js'
 
 async function init() {
   const args = process.argv.slice(2)
@@ -27,13 +28,15 @@ async function init() {
     console.log('   (Run with `npm run enable-startup` to start automatically on Windows boot)')
   }
 
-  // Play startup sound and speak greeting
+  // Play startup sound
   playEarcon('startup')
-  await speak('Handsfree System Assistant is active. Listening for commands.')
 
   // Start background microphone listener & interactive console
   startMicrophoneListener()
   startInteractiveConsole()
+
+  // Full Screen Dictation on Startup: Announces open apps, folders, files, and prompts user
+  await dictateStartupScreen()
 
   // Keep-alive timer so the assistant never terminates unexpectedly
   setInterval(() => {}, 1000 * 60 * 60)

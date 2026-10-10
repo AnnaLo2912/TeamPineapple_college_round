@@ -1,5 +1,6 @@
 import { exec } from 'child_process'
 import { speak, playEarcon } from './ttsEngine.js'
+import { openDesktopItem } from './screenDictator.js'
 
 /**
  * System Actions Engine
@@ -158,6 +159,13 @@ export async function executeCommand(rawCommand) {
     `
     exec(`powershell -NoProfile -Command "${ps}"`)
     return true
+  }
+
+  // 5. Dynamic Desktop Folders & Apps Launcher ("open tools", "open brave", "open vs code", etc.)
+  const cleanTarget = cmd.replace(/^open\s+/, '').replace(/\s+folder$/, '').trim()
+  if (cleanTarget) {
+    const opened = openDesktopItem(cleanTarget)
+    if (opened) return true
   }
 
   return false

@@ -42,21 +42,10 @@ try {
     $commandGrammar.Name = "SystemCommands"
     $engine.LoadGrammar($commandGrammar)
 
-    $parentProc = Get-CimInstance Win32_Process -Filter "ProcessId = $PID"
-    $parentPid = if ($parentProc) { $parentProc.ParentProcessId } else { $null }
-
     Write-Output "LISTENER_READY"
     [Console]::Out.Flush()
 
     while ($true) {
-        # Auto-exit if parent Node process has closed
-        if ($parentPid) {
-            $parent = Get-Process -Id $parentPid -ErrorAction SilentlyContinue
-            if (-not $parent) {
-                break
-            }
-        }
-
         try {
             $result = $engine.Recognize([TimeSpan]::FromSeconds(3))
             if ($result -ne $null -and $result.Text -ne $null) {

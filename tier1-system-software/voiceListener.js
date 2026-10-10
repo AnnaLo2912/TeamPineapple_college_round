@@ -3,7 +3,7 @@ import { spawn, execSync } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { executeCommand } from './systemActions.js'
-import { announceActiveWindow, announceOpenWindows } from './screenDictator.js'
+import { announceActiveWindow, announceOpenWindows, dictateStartupScreen } from './screenDictator.js'
 import { speak, playEarcon } from './ttsEngine.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -30,7 +30,7 @@ export async function processVoiceInput(input) {
 
   console.log(`\n🎤 [Tier 1 Voice Command Received]: "${text}"`)
 
-  // Check Screen Dictator commands
+  // Check Screen Dictator commands (Full Screen & Desktop Dictation)
   const lower = text.toLowerCase()
   if (
     lower.includes('screen') ||
@@ -38,11 +38,18 @@ export async function processVoiceInput(input) {
     lower.includes('what is on') ||
     lower.includes("what's on") ||
     lower.includes('read screen') ||
-    lower.includes('active window') ||
-    lower.includes('current window') ||
     lower.includes('where am i') ||
+    lower.includes('all apps') ||
     lower.includes('index topped') ||
     lower.includes('next stop')
+  ) {
+    await dictateStartupScreen()
+    return
+  }
+
+  if (
+    lower.includes('active window') ||
+    lower.includes('current window')
   ) {
     await announceActiveWindow()
     return
@@ -81,8 +88,6 @@ export async function processVoiceInput(input) {
  * Starts native background microphone listener via Windows Speech Recognition
  */
 export function startMicrophoneListener() {
-  cleanupExistingMicProcesses()
-
   const psScriptPath = path.join(__dirname, 'listenMic.ps1')
 
   micProcess = spawn('powershell.exe', [

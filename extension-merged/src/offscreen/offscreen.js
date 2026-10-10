@@ -3,6 +3,9 @@ import { debugLog, debugEvery } from '../shared/debug.js'
 import { WebcamManager } from './WebcamManager.js'
 import { initFaceTracker, detectFaceLandmarks } from './FaceTracker.js'
 import { initHandTracker, detectHandLandmarks, isHandTrackerReady } from './HandTracker.js'
+import { initVoiceEngine } from './VoiceEngine.js'
+
+initVoiceEngine()
 
 const webcam = new WebcamManager(DEFAULT_CONFIG)
 

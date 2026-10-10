@@ -1,4 +1,5 @@
 import { debugLog, debugEvery } from '../shared/debug.js'
+import { createVoiceRouter } from './voiceRouter.js'
 
 function isSupportedPage(url) {
   if (!url) return false
@@ -115,6 +116,29 @@ function switchTab(direction) {
   })
 }
 
+function openNewTab() {
+  chrome.tabs.create({ active: true }, () => void chrome.runtime.lastError)
+}
+
+function closeActiveTab() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tab = tabs && tabs[0]
+    if (tab?.id != null) chrome.tabs.remove(tab.id, () => void chrome.runtime.lastError)
+  })
+}
+
+function openUrl(url) {
+  if (!url) return
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tab = tabs && tabs[0]
+    if (tab?.id != null) {
+      chrome.tabs.update(tab.id, { url }, () => void chrome.runtime.lastError)
+    } else {
+      chrome.tabs.create({ url, active: true }, () => void chrome.runtime.lastError)
+    }
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Offscreen document management
 // ---------------------------------------------------------------------------
@@ -145,8 +169,8 @@ async function ensureOffscreen() {
   offscreenCreating = offscreen
     .createDocument({
       url: 'src/offscreen/offscreen.html',
-      reasons: ['USER_MEDIA'],
-      justification: 'Webcam-based head and hand tracking for accessible browsing',
+      reasons: ['USER_MEDIA', 'AUDIO_PLAYBACK'],
+      justification: 'Microphone capture and text-to-speech playback for voice control, plus webcam-based head and hand tracking for accessible browsing',
     })
     .catch((error) => {
       const message = String(error?.message || error)
@@ -174,6 +198,147 @@ function sendToOffscreen(message) {
   chrome.runtime.sendMessage({ ...message, target: 'offscreen' }, () => void chrome.runtime.lastError)
 }
 
+// ---------------------------------------------------------------------------
+// Voice engine (offscreen mic/STT/TTS + service-worker command routing)
+// ---------------------------------------------------------------------------
+
+let voiceListening = false
+let voiceAlwaysListening = false
+let voiceEngineState = 'stopped'
+let voiceMessage = ''
+let voiceStartTimer = null
+let voiceTtsPaused = false
+let ttsSeq = 0
+const pendingTts = new Map()
+
+function broadcastVoiceState() {
+  const snapshot = voiceRouter.getSnapshot()
+  chrome.runtime.sendMessage(
+    { type: 'VOICE_STATE', listening: voiceListening, always: voiceAlwaysListening, engineState: voiceEngineState, message: voiceMessage, ...snapshot },
+    () => void chrome.runtime.lastError
+  )
+}
+
+function speak(text) {
+  return new Promise((resolve) => {
+    const id = ++ttsSeq
+    pendingTts.set(id, resolve)
+    void ensureOffscreen().then(() => sendToOffscreen({ type: 'VOICE_TTS', text, id }))
+  })
+}
+
+function stopSpeak() {
+  pendingTts.forEach((resolve) => resolve())
+  pendingTts.clear()
+  sendToOffscreen({ type: 'VOICE_TTS_STOP' })
+  voiceTtsPaused = false
+  return Promise.resolve()
+}
+
+function pauseSpeak() {
+  voiceTtsPaused = true
+  sendToOffscreen({ type: 'VOICE_TTS_PAUSE' })
+  return Promise.resolve()
+}
+
+function resumeSpeak() {
+  voiceTtsPaused = false
+  sendToOffscreen({ type: 'VOICE_TTS_RESUME' })
+  return Promise.resolve()
+}
+
+const voiceRouter = createVoiceRouter({
+  speak,
+  stopSpeak,
+  pauseSpeak,
+  resumeSpeak,
+  switchTab,
+  openNewTab,
+  closeActiveTab,
+  openUrl,
+  broadcast: (message) => {
+    chrome.runtime.sendMessage(message, () => void chrome.runtime.lastError)
+  },
+})
+
+async function startVoiceListening() {
+  if (voiceListening) return
+  voiceListening = true
+  voiceEngineState = 'starting'
+  voiceMessage = ''
+  broadcastVoiceState()
+  if (voiceStartTimer) clearTimeout(voiceStartTimer)
+  voiceStartTimer = setTimeout(() => {
+    voiceStartTimer = null
+    if (voiceListening && voiceEngineState === 'starting') {
+      voiceListening = false
+      voiceEngineState = 'error'
+      voiceMessage = 'Microphone did not start. Check permissions and try again.'
+      broadcastVoiceState()
+    }
+  }, 8000)
+  try {
+    await ensureOffscreen()
+    sendToOffscreen({ type: 'VOICE_ENGINE_START' })
+  } catch (error) {
+    voiceListening = false
+    voiceEngineState = 'error'
+    voiceMessage = 'Voice engine failed to start.'
+    if (voiceStartTimer) {
+      clearTimeout(voiceStartTimer)
+      voiceStartTimer = null
+    }
+    broadcastVoiceState()
+    debugLog('background', 'voice start failed', String(error))
+  }
+}
+
+function stopVoiceListening() {
+  if (!voiceListening) return
+  voiceListening = false
+  voiceEngineState = 'stopped'
+  voiceMessage = ''
+  if (voiceStartTimer) {
+    clearTimeout(voiceStartTimer)
+    voiceStartTimer = null
+  }
+  void stopSpeak()
+  sendToOffscreen({ type: 'VOICE_ENGINE_STOP' })
+  broadcastVoiceState()
+  void maybeCloseOffscreen()
+}
+
+async function setVoiceAlways(enabled) {
+  voiceAlwaysListening = enabled
+  try {
+    await chrome.storage.local.set({ handsfree_voice_always: enabled })
+  } catch {
+    // ignore persistence failures
+  }
+  if (enabled) {
+    void startVoiceListening()
+  } else {
+    stopVoiceListening()
+  }
+  broadcastVoiceState()
+}
+
+async function loadVoiceSettings() {
+  try {
+    const result = await chrome.storage.local.get('handsfree_voice_always')
+    voiceAlwaysListening = Boolean(result && result.handsfree_voice_always)
+  } catch {
+    // keep default
+  }
+  if (voiceAlwaysListening) void startVoiceListening()
+}
+
+async function maybeCloseOffscreen() {
+  if (trackingEnabled) return
+  if (voiceListening || voiceAlwaysListening) return
+  await closeOffscreen()
+}
+
 async function loadStoredMode() {
   try {
     const result = await chrome.storage.sync.get('handsfree_config')
@@ -195,7 +360,7 @@ async function startTracking() {
 
 async function stopTracking() {
   sendToOffscreen({ type: 'OFFSCREEN_STOP' })
-  await closeOffscreen()
+  await maybeCloseOffscreen()
 }
 
 function setTrackingEnabled(enabled) {
@@ -210,6 +375,7 @@ function setTrackingEnabled(enabled) {
 }
 
 void loadModuleState()
+void loadVoiceSettings()
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -254,6 +420,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   unregisterTab(tabId)
   if (activeTabId === tabId) activeTabId = null
   if (permissionTabId === tabId) permissionTabId = null
+  if (voicePermissionTabId === tabId) voicePermissionTabId = null
+})
+
+chrome.runtime.onStartup.addListener(() => {
+  void loadVoiceSettings()
 })
 
 chrome.commands.onCommand.addListener((command) => {
@@ -289,10 +460,39 @@ function openPermissionTabSingle() {
 
 function createPermissionTab() {
   isOpeningPermissionTab = true
-  chrome.tabs.create({ url: 'src/offscreen/permission.html' }, (tab) => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('src/offscreen/permission.html') }, (tab) => {
     if (tab?.id) permissionTabId = tab.id
     setTimeout(() => {
       isOpeningPermissionTab = false
+    }, 2000)
+  })
+}
+
+let voicePermissionTabId = null
+let isOpeningVoicePermissionTab = false
+
+function openVoicePermissionTabSingle() {
+  if (isOpeningVoicePermissionTab) return
+  if (voicePermissionTabId !== null) {
+    chrome.tabs.get(voicePermissionTabId, (tab) => {
+      if (chrome.runtime.lastError || !tab) {
+        voicePermissionTabId = null
+        createVoicePermissionTab()
+      } else {
+        chrome.tabs.update(voicePermissionTabId, { active: true })
+      }
+    })
+  } else {
+    createVoicePermissionTab()
+  }
+}
+
+function createVoicePermissionTab() {
+  isOpeningVoicePermissionTab = true
+  chrome.tabs.create({ url: chrome.runtime.getURL('voice/permission.html') }, (tab) => {
+    if (tab?.id) voicePermissionTabId = tab.id
+    setTimeout(() => {
+      isOpeningVoicePermissionTab = false
     }, 2000)
   })
 }
@@ -369,6 +569,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (trackingEnabled) {
       sendToOffscreen({ type: 'OFFSCREEN_SET_MODE', mode: currentMode })
       sendToOffscreen({ type: 'OFFSCREEN_START' })
+    }
+    if (voiceListening || voiceAlwaysListening) {
+      sendToOffscreen({ type: 'VOICE_ENGINE_START' })
     }
     sendResponse({ success: true })
     return true
@@ -493,6 +696,158 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.url) {
       chrome.tabs.create({ url: message.url, active: true })
     }
+    sendResponse({ success: true })
+    return true
+  }
+
+  // -------------------------------------------------------------------------
+  // Voice engine messages
+  // -------------------------------------------------------------------------
+
+  // Incoming from the offscreen document.
+  if (message.type === 'VOICE_TRANSCRIPT') {
+    if (voiceListening) void voiceRouter.handleTranscript(message.transcript)
+    return true
+  }
+
+  if (message.type === 'VOICE_TTS_DONE') {
+    const resolve = pendingTts.get(message.id)
+    if (resolve) {
+      pendingTts.delete(message.id)
+      resolve()
+    }
+    voiceTtsPaused = false
+    return true
+  }
+
+  if (message.type === 'VOICE_ENGINE_STATUS') {
+    voiceEngineState = message.state || 'stopped'
+    if (message.state === 'listening') {
+      voiceListening = true
+      voiceMessage = 'Listening — speak a command.'
+      if (voiceStartTimer) {
+        clearTimeout(voiceStartTimer)
+        voiceStartTimer = null
+      }
+    } else if (message.state === 'stopped' || message.state === 'error') {
+      voiceListening = false
+      if (voiceStartTimer) {
+        clearTimeout(voiceStartTimer)
+        voiceStartTimer = null
+      }
+      if (message.state === 'error') voiceMessage = 'Microphone error.'
+      else voiceMessage = ''
+    }
+    broadcastVoiceState()
+    return true
+  }
+
+  if (message.type === 'VOICE_ENGINE_ERROR') {
+    voiceEngineState = 'error'
+    voiceListening = false
+    if (voiceStartTimer) {
+      clearTimeout(voiceStartTimer)
+      voiceStartTimer = null
+    }
+    const name = String(message.name || '').toLowerCase()
+    debugLog('background', 'voice engine error', message.name || message.message)
+    if (name.includes('notallowed') || name.includes('permission') || name.includes('denied')) {
+      voiceMessage = 'Microphone permission needed — click "Fix Mic Permission".'
+    } else if (name.includes('notfound')) {
+      voiceMessage = 'No microphone found.'
+    } else {
+      voiceMessage = 'Microphone error — check permissions.'
+    }
+    broadcastVoiceState()
+    if (name.includes('notallowed') || name.includes('permission') || name.includes('denied')) {
+      openVoicePermissionTabSingle()
+    }
+    return true
+  }
+
+  // Incoming from the popup.
+  if (message.type === 'VOICE_START_LISTENING') {
+    void startVoiceListening()
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'VOICE_STOP_LISTENING') {
+    stopVoiceListening()
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'VOICE_SET_ALWAYS') {
+    void setVoiceAlways(!!message.always)
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'GET_VOICE_STATE') {
+    sendResponse({
+      listening: voiceListening,
+      always: voiceAlwaysListening,
+      engineState: voiceEngineState,
+      ...voiceRouter.getSnapshot(),
+    })
+    return true
+  }
+
+  if (message.type === 'VOICE_MODE_SET') {
+    if (message.mode) {
+      voiceRouter.setMode(message.mode)
+      if (message.mode !== 'reading' && voiceRouter.isReadingActive()) {
+        void voiceRouter.stopReadingPage()
+      }
+    }
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'VOICE_READ_START') {
+    void voiceRouter.startReadingPage()
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'VOICE_READ_NEXT') {
+    void voiceRouter.readNextSection()
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'VOICE_READ_PREV') {
+    void voiceRouter.readPreviousSection()
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'VOICE_READ_REPEAT') {
+    void voiceRouter.repeatCurrentSection()
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'VOICE_READ_STOP') {
+    void voiceRouter.stopReadingPage()
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'VOICE_READ_PAUSE_RESUME') {
+    void voiceRouter.pauseOrResumeReading()
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'VOICE_SYNC_NUMBERS') {
+    voiceRouter.syncNumbersStatus().then((res) => sendResponse(res || { success: false }))
+    return true
+  }
+
+  if (message.type === 'VOICE_COMMAND') {
+    if (message.text) void voiceRouter.handleTranscript(message.text)
     sendResponse({ success: true })
     return true
   }

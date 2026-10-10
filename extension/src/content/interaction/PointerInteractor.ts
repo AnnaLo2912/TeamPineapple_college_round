@@ -53,6 +53,26 @@ function targetFor(x: number, y: number): Element | null {
   return document.elementFromPoint(x, y)
 }
 
+function isOverlay(el: Element): boolean {
+  return Boolean(el.closest('[class*="handsfree-"]'))
+}
+
+let lastHovered: Element | null = null
+
+function dispatchLeave(el: Element, x: number, y: number) {
+  el.dispatchEvent(firePointer('pointerout', x, y))
+  el.dispatchEvent(fireMouse('mouseout', x, y))
+  el.dispatchEvent(firePointer('pointerleave', x, y))
+  el.dispatchEvent(fireMouse('mouseleave', x, y))
+}
+
+export function resetHover() {
+  if (lastHovered && lastHovered.isConnected) {
+    dispatchLeave(lastHovered, 0, 0)
+  }
+  lastHovered = null
+}
+
 export function isSliderLike(el: Element | null): boolean {
   if (!el) return false
   const tag = el.tagName?.toLowerCase()
@@ -66,9 +86,21 @@ export function isSliderLike(el: Element | null): boolean {
 
 export function dispatchHover(x: number, y: number, el: Element | null = null) {
   const target = el || targetFor(x, y)
-  if (!target) return
-  target.dispatchEvent(firePointer('pointerover', x, y))
-  target.dispatchEvent(fireMouse('mouseover', x, y))
+
+  if (!target || isOverlay(target)) {
+    resetHover()
+    return
+  }
+
+  if (target !== lastHovered) {
+    if (lastHovered && lastHovered.isConnected) {
+      dispatchLeave(lastHovered, x, y)
+    }
+    target.dispatchEvent(firePointer('pointerover', x, y))
+    target.dispatchEvent(fireMouse('mouseover', x, y))
+    lastHovered = target
+  }
+
   target.dispatchEvent(firePointer('pointermove', x, y))
   target.dispatchEvent(fireMouse('mousemove', x, y))
 }
@@ -115,4 +147,8 @@ export function dispatchClickSequence(el: Element, x: number, y: number) {
       ...(eventInit(x, y, { button: 0, buttons: 0, detail: 1 }) as MouseEventInit),
     })
   )
+
+  if (isOverlay(el)) {
+    dispatchLeave(el, x, y)
+  }
 }

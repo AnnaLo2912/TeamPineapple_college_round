@@ -56,6 +56,7 @@ export class TargetDetector {
 
     elements.forEach(el => {
       if (EXCLUDED_TAGS.includes(el.tagName)) return
+      if (el.closest('[class*="handsfree-"]')) return
       if (el.offsetParent === null && el.tagName !== 'BODY') return
       if (el.getAttribute('aria-hidden') === 'true') return
       if (el.style.display === 'none' || el.style.visibility === 'hidden') return

@@ -13,6 +13,7 @@ interface PopupState {
   edgeScroll: boolean
   snapStrength: number
   magneticRadius: number
+  padSpeed: number
   hasFaceCalibration: boolean
   hasHandCalibration: boolean
   unsupportedPage: boolean
@@ -22,13 +23,14 @@ const Popup: React.FC = () => {
   const [state, setState] = useState<PopupState>({
     isEnabled: true,
     mode: 'face',
-    sensitivity: 1.5,
+    sensitivity: 2.2,
     smoothing: 0.15,
-    deadZone: 0.02,
+    deadZone: 0.01,
     dwellTime: 2500,
     edgeScroll: true,
     snapStrength: 0.75,
     magneticRadius: 64,
+    padSpeed: 22,
     hasFaceCalibration: false,
     hasHandCalibration: false,
     unsupportedPage: false,
@@ -60,6 +62,7 @@ const Popup: React.FC = () => {
           edgeScroll: config.edgeScroll ?? true,
           snapStrength: config.snapStrength ?? 0.75,
           magneticRadius: config.magneticRadius ?? 64,
+          padSpeed: config.padSpeed ?? 22,
           hasFaceCalibration: !!faceCal?.matrix,
           hasHandCalibration: !!handCal?.matrix,
           unsupportedPage: unsupported,
@@ -315,6 +318,23 @@ const Popup: React.FC = () => {
           </div>
 
           <div style={styles.section}>
+            <div style={styles.row}>
+              <span style={styles.label}>Pad speed</span>
+              <input
+                type="range"
+                min="6"
+                max="40"
+                step="1"
+                value={state.padSpeed}
+                onChange={(e) => updateConfig({ padSpeed: parseFloat(e.target.value) })}
+                style={styles.slider}
+                disabled={!state.isEnabled}
+              />
+              <span style={styles.value}>{state.padSpeed}</span>
+            </div>
+          </div>
+
+          <div style={styles.section}>
             <label style={styles.toggleLabel}>
               <input
                 type="checkbox"
@@ -431,8 +451,8 @@ async function getCalibration(mode: 'face' | 'hand'): Promise<any> {
 
 const DEFAULT_CONFIG: TrackerConfig = {
   mode: 'face',
-  sensitivity: 1.5,
-  deadZone: 0.02,
+  sensitivity: 2.2,
+  deadZone: 0.01,
   smoothing: 0.15,
   showWebcamPreview: false,
   magneticRadius: 64,
@@ -440,6 +460,7 @@ const DEFAULT_CONFIG: TrackerConfig = {
   dwellTime: 2500,
   edgeScroll: true,
   edgeScrollBand: 0.15,
+  padSpeed: 22,
 }
 
 const styles: Record<string, React.CSSProperties> = {

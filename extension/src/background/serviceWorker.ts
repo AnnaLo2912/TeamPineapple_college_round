@@ -187,8 +187,8 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.storage.sync.set({
       handsfree_config: {
         mode: 'face',
-        sensitivity: 1.5,
-        deadZone: 0.02,
+        sensitivity: 2.2,
+        deadZone: 0.01,
         smoothing: 0.15,
         showWebcamPreview: false,
         magneticRadius: 64,
@@ -196,6 +196,7 @@ chrome.runtime.onInstalled.addListener((details) => {
         dwellTime: 2500,
         edgeScroll: true,
         edgeScrollBand: 0.15,
+        padSpeed: 22,
       }
     })
   }

@@ -96,7 +96,7 @@ export class CoordinateMapper {
     }
 
     const rawDist = Math.hypot(rawPoint.x - this.lastRawPoint!.x, rawPoint.y - this.lastRawPoint!.y)
-    const adaptiveAlpha = rawDist > 0.02 ? Math.min(alpha * 3, 0.5) : alpha
+    const adaptiveAlpha = rawDist > 0.02 ? Math.min(alpha * 3, 0.3) : alpha
 
     this.smoothedPoint.x += (rawPoint.x - this.smoothedPoint.x) * adaptiveAlpha
     this.smoothedPoint.y += (rawPoint.y - this.smoothedPoint.y) * adaptiveAlpha

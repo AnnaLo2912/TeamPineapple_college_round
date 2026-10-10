@@ -46,13 +46,14 @@ export interface TrackerConfig {
   dwellTime: number
   edgeScroll: boolean
   edgeScrollBand: number
+  padSpeed: number
   isCalibrating?: boolean
 }
 
 export const DEFAULT_CONFIG: TrackerConfig = {
   mode: 'face',
-  sensitivity: 1.5,
-  deadZone: 0.02,
+  sensitivity: 2.2,
+  deadZone: 0.01,
   smoothing: 0.15,
   showWebcamPreview: false,
   magneticRadius: 64,
@@ -60,6 +61,7 @@ export const DEFAULT_CONFIG: TrackerConfig = {
   dwellTime: 2500,
   edgeScroll: true,
   edgeScrollBand: 0.15,
+  padSpeed: 22,
 }
 
 export const DWELL_TIME = 800

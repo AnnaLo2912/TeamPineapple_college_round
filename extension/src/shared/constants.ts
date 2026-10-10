@@ -37,8 +37,9 @@ export const DWELL_EDGE_MARGIN = 24
 export const DWELL_MIN_HITBOX = 32
 export const EDGE_SCROLL_HOLD_MS = 700
 
-export const NUDGE_ACCEL_MS = 300
-export const NUDGE_MAX_SPEED = 12
+export const NUDGE_ACCEL_MS = 180
+export const NUDGE_MAX_SPEED = 22
+export const DOCK_DWELL_MS = 600
 
 export const SCROLL_ACCEL_MS = 250
 export const SCROLL_MIN_SPEED = 1.2

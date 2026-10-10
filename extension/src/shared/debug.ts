@@ -1,6 +1,6 @@
 // Diagnostic logging for the tracking pipeline. Set DEBUG to false (or build
 // with NODE_ENV!=production wiring) once everything works to silence it.
-export const DEBUG = true
+export const DEBUG = false
 
 export function debugLog(scope: string, ...args: unknown[]) {
   if (!DEBUG) return

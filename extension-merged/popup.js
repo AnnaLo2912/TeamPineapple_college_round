@@ -1368,6 +1368,29 @@ document.addEventListener('DOMContentLoaded', () => {
       text = text.replace(new RegExp(`\\b${w}\\b`, 'g'), d);
     }
 
+    // Multimodal Voice Click: Click link/target focused or dwelled by Head or Hand cursor
+    if (
+      text === 'click' ||
+      text === 'click it' ||
+      text === 'click link' ||
+      text === 'click this' ||
+      text === 'click button' ||
+      text === 'press' ||
+      text === 'tap' ||
+      text === 'select'
+    ) {
+      messageText.textContent = 'Command: Click';
+      sendToActiveTab({ action: 'VOICE_CLICK', type: 'VOICE_CLICK' }).then((res) => {
+        if (res && res.success) {
+          setUIState(State.COMPLETED, `Clicked: ${res.label || 'link'}`);
+          speakText('Clicked');
+        } else {
+          setUIState(State.COMPLETED, res?.message || 'Click executed.');
+        }
+      });
+      return;
+    }
+
     // Eyes-Free Blind Mode Activation / Deactivation
     if (text === 'blind mode' || text === 'eyes free' || text === 'eyes free mode' || text === 'enable blind mode' || text === 'start blind mode') {
       messageText.textContent = 'Command: Enable Eyes-Free Blind Mode';

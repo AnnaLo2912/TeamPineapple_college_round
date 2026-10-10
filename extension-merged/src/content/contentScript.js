@@ -38,6 +38,7 @@ let calibrationOverlay = null
 let tabDock = null
 let lastClickTime = 0
 let currentDwellTarget = null
+let armedTarget = null
 let lastRawPoint = null
 let lastMappedPoint = null
 let lastSnappedPoint = null
@@ -227,6 +228,22 @@ function setupMessageHandlers() {
       sendStatusUpdate()
     }
   })
+
+  messagingBridge.onMessage('VOICE_CLICK', () => {
+    return handleVoiceClick()
+  })
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.action === 'VOICE_CLICK' || message?.type === 'VOICE_CLICK') {
+      const res = handleVoiceClick()
+      sendResponse(res || { success: true })
+      return true
+    }
+  })
+
+  window.addEventListener('handsfree:voice_click', () => {
+    handleVoiceClick()
+  })
 }
 
 function sendStatusUpdate() {
@@ -330,6 +347,16 @@ function isDockTarget(target) {
 function updateInteraction(snappedPosition, mappedPoint) {
   const target = resolveTarget(snappedPosition)
 
+  if (armedTarget) {
+    const keepArmed =
+      isNearTarget(armedTarget, snappedPosition, DWELL_EDGE_MARGIN * 2) ||
+      (target !== null && sameLogicalTarget(target, armedTarget))
+
+    if (!keepArmed) {
+      disarmTarget()
+    }
+  }
+
   if (currentDwellTarget) {
     const keepDwelling =
       isNearTarget(currentDwellTarget, snappedPosition, DWELL_EDGE_MARGIN) ||
@@ -337,11 +364,11 @@ function updateInteraction(snappedPosition, mappedPoint) {
 
     if (!keepDwelling) {
       cancelDwell()
-      if (target) {
+      if (target && (!armedTarget || !sameLogicalTarget(target, armedTarget))) {
         startDwell(target)
       }
     }
-  } else if (target) {
+  } else if (target && (!armedTarget || !sameLogicalTarget(target, armedTarget))) {
     startDwell(target)
   }
 
@@ -472,6 +499,81 @@ function captureCalibrationPoint() {
   }
 }
 
+function armTargetForVoiceClick(target) {
+  if (!target || !target.element) return
+  armedTarget = target
+  debugLog('content', 'dwell:armed', { tagName: target.tagName })
+  cursorOverlay?.setArmed(true)
+  targetHighlighter?.setArmed(true)
+
+  const rawText = (
+    target.element.innerText ||
+    target.element.getAttribute('aria-label') ||
+    target.element.title ||
+    target.element.value ||
+    ''
+  ).trim().replace(/\s+/g, ' ')
+  const shortText = rawText ? `"${rawText.slice(0, 24)}${rawText.length > 24 ? '…' : ''}"` : target.tagName.toUpperCase()
+  cursorOverlay?.showStatus(`🎙️ Dwell complete! Say "Click" to open ${shortText}`)
+  window.dispatchEvent(new CustomEvent('handsfree:target_armed', { detail: { target } }))
+}
+
+function disarmTarget() {
+  if (!armedTarget) return
+  armedTarget = null
+  cursorOverlay?.setArmed(false)
+  targetHighlighter?.setArmed(false)
+  cursorOverlay?.hideStatus()
+  debugLog('content', 'dwell:disarmed')
+}
+
+function handleVoiceClick() {
+  let targetToClick = armedTarget
+
+  if (!targetToClick && currentDwellTarget) {
+    targetToClick = currentDwellTarget
+    cancelDwell()
+  }
+
+  if (!targetToClick && lastSnappedPoint) {
+    targetToClick = resolveTarget(lastSnappedPoint)
+  }
+
+  if (!targetToClick && lastDrawnPoint) {
+    const el = document.elementFromPoint(lastDrawnPoint.x, lastDrawnPoint.y)
+    if (el && !el.closest('[class*="handsfree-"]')) {
+      const clickable = el.closest('a, button, input, [role="button"], [tabindex]') || el
+      targetToClick = {
+        element: clickable,
+        center: lastDrawnPoint,
+        tagName: clickable.tagName.toLowerCase(),
+        rect: clickable.getBoundingClientRect(),
+      }
+    }
+  }
+
+  if (targetToClick && targetToClick.element) {
+    debugLog('content', 'voice:click:execute', { tagName: targetToClick.tagName })
+    executeClick(targetToClick)
+    cursorOverlay?.flashClick()
+    const label = (
+      targetToClick.element.innerText ||
+      targetToClick.element.getAttribute('aria-label') ||
+      targetToClick.element.title ||
+      targetToClick.tagName
+    ).trim().replace(/\s+/g, ' ').slice(0, 30)
+
+    cursorOverlay?.showStatus(`✓ Clicked: ${label || 'target'}`)
+    setTimeout(() => cursorOverlay?.hideStatus(), 1600)
+    disarmTarget()
+    return { success: true, label }
+  }
+
+  cursorOverlay?.showStatus('⚠️ No link or button focused under cursor')
+  setTimeout(() => cursorOverlay?.hideStatus(), 1500)
+  return { success: false, error: 'No target focused under cursor.' }
+}
+
 function startDwell(target) {
   currentDwellTarget = target
   const dock = isDockTarget(target)
@@ -487,7 +589,7 @@ function startDwell(target) {
     if (dragActive) {
       endDrag()
     } else {
-      executeClick(element)
+      armTargetForVoiceClick(target)
     }
   })
   debugLog('content', 'dwell:start', { tagName: target.tagName, slider })
@@ -507,13 +609,20 @@ function executeClick(target) {
 
   if (!target.element.isConnected) return
 
-  debugLog('content', 'dwell:click', { tagName: target.tagName })
+  debugLog('content', 'click:execute', { tagName: target.tagName })
   cursorOverlay?.flashClick()
 
   const point = lastDrawnPoint || target.center
   dispatchClickSequence(target.element, point.x, point.y)
   const element = target.element
   element.focus?.()
+
+  const anchor = element.closest('a')
+  if (anchor && anchor.href && !anchor.href.startsWith('javascript:')) {
+    anchor.click()
+  } else if (typeof element.click === 'function') {
+    element.click()
+  }
 }
 
 function startDrag(target) {
@@ -782,6 +891,7 @@ function updateEdgeScroll(mappedPoint, target) {
 function setEnabled(enabled) {
   trackingEnabled = enabled
   if (!enabled) {
+    disarmTarget()
     cancelDwell()
     cancelRecenter()
     stopScrollDrive()

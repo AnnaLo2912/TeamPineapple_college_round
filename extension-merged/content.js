@@ -1482,6 +1482,11 @@
         sendResponse(clickSearchResult(request.number));
         break;
 
+      case 'VOICE_CLICK':
+        window.dispatchEvent(new CustomEvent('handsfree:voice_click'));
+        sendResponse({ success: true, message: 'Voice click triggered.' });
+        break;
+
       default:
         sendResponse({ success: false, error: 'Unknown action' });
     }

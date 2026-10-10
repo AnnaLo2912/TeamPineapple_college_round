@@ -554,7 +554,7 @@ function handleVoiceClick() {
 
   if (targetToClick && targetToClick.element) {
     debugLog('content', 'voice:click:execute', { tagName: targetToClick.tagName })
-    executeClick(targetToClick)
+    executeClick(targetToClick, true)
     cursorOverlay?.flashClick()
     const label = (
       targetToClick.element.innerText ||
@@ -601,15 +601,15 @@ function cancelDwell() {
   if (dragActive) endDrag()
 }
 
-function executeClick(target) {
+function executeClick(target, isVoice = false) {
   const dock = isDockTarget(target)
   const now = Date.now()
-  if (!dock && now - lastClickTime < CLICK_COOLDOWN) return
+  if (!dock && !isVoice && now - lastClickTime < CLICK_COOLDOWN) return
   lastClickTime = now
 
   if (!target.element.isConnected) return
 
-  debugLog('content', 'click:execute', { tagName: target.tagName })
+  debugLog('content', 'click:execute', { tagName: target.tagName, isVoice })
   cursorOverlay?.flashClick()
 
   const point = lastDrawnPoint || target.center
@@ -619,7 +619,18 @@ function executeClick(target) {
 
   const anchor = element.closest('a')
   if (anchor && anchor.href && !anchor.href.startsWith('javascript:')) {
-    anchor.click()
+    try {
+      anchor.click()
+    } catch (_) {}
+    if (anchor.target === '_blank') {
+      window.open(anchor.href, '_blank')
+    } else {
+      setTimeout(() => {
+        if (window.location.href !== anchor.href) {
+          window.location.assign(anchor.href)
+        }
+      }, 120)
+    }
   } else if (typeof element.click === 'function') {
     element.click()
   }

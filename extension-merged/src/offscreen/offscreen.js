@@ -3,8 +3,12 @@ import { debugLog, debugEvery } from '../shared/debug.js'
 import { WebcamManager } from './WebcamManager.js'
 import { initFaceTracker, detectFaceLandmarks } from './FaceTracker.js'
 import { initHandTracker, detectHandLandmarks, isHandTrackerReady } from './HandTracker.js'
+import { SpeechRecognizer } from './SpeechRecognizer.js'
 
 const webcam = new WebcamManager(DEFAULT_CONFIG)
+const speechRecognizer = new SpeechRecognizer((cmd) => {
+  send(cmd)
+})
 
 let mode = 'face'
 let running = false
@@ -45,6 +49,7 @@ async function startTracking() {
     webcam.onFrame(processFrame)
     running = true
     debugLog('offscreen', 'tracking running')
+    speechRecognizer.start()
   } catch (error) {
     console.error('Offscreen: failed to start tracking', error)
     debugLog('offscreen', 'startTracking failed -> permission required', error)
@@ -63,6 +68,7 @@ function stopTracking() {
   debugLog('offscreen', 'stopTracking')
   running = false
   webcam.stop()
+  speechRecognizer.stop()
 }
 
 async function processFrame(video, timestamp) {

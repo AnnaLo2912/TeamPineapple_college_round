@@ -349,8 +349,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
-  if (message.type === 'CAMERA_PERMISSION_REQUIRED') {
-    debugLog('background', 'camera permission required -> opening permission tab')
+  if (message.type === 'VOICE_CLICK' || message.action === 'VOICE_CLICK') {
+    debugLog('background', 'voice click received -> forwarding to active tab', message)
+    forwardToActiveTab({
+      type: 'VOICE_CLICK',
+      action: 'VOICE_CLICK',
+      transcript: message.transcript,
+    })
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'CAMERA_PERMISSION_REQUIRED' || message.type === 'MIC_PERMISSION_REQUIRED') {
+    debugLog('background', 'permission required -> opening permission tab')
     openPermissionTabSingle()
     sendResponse({ success: true })
     return true

@@ -12,6 +12,7 @@ try {
     $engine.SetInputToDefaultAudioDevice()
 
     $commands = @(
+        'click', 'click link', 'click it', 'tap', 'press',
         'open google', 'google', 'open browser', 'browser', 'google chrome', 'chrome', 'google search', 'open internet', 'internet',
         'open file explorer', 'file explorer', 'open files', 'files', 'explorer', 'open my files', 'folders',
         'open notepad', 'notepad', 'text editor', 'open notes', 'notes',

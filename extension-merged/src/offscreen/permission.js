@@ -3,11 +3,11 @@ const retry = document.getElementById('retry')
 
 async function requestCamera() {
   retry.style.display = 'none'
-  msg.textContent = 'Requesting camera permission…'
+  msg.textContent = 'Requesting camera and microphone access…'
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-    stream.getTracks().forEach(track => track.stop())
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    stream.getTracks().forEach((track) => track.stop())
 
     chrome.runtime.sendMessage({ type: 'CAMERA_GRANTED' }, () => {
       void chrome.runtime.lastError
@@ -15,8 +15,17 @@ async function requestCamera() {
 
     window.close()
   } catch (error) {
-    console.error('Camera permission denied:', error)
-    msg.textContent = 'Camera access was denied or unavailable. Click below to try again.'
+    // If combined audio+video failed, try video only as fallback
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      stream.getTracks().forEach((track) => track.stop())
+      chrome.runtime.sendMessage({ type: 'CAMERA_GRANTED' }, () => void chrome.runtime.lastError)
+      window.close()
+      return
+    } catch (_) {}
+
+    console.error('Camera/Microphone permission denied:', error)
+    msg.textContent = 'Camera & Microphone access was denied or unavailable. Click below to try again.'
     retry.style.display = 'inline-block'
   }
 }

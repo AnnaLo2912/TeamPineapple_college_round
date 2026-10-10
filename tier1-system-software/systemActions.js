@@ -14,6 +14,14 @@ export async function executeCommand(rawCommand) {
 
   console.log(`[Tier 1 System Action] Executing: "${cmd}"`)
 
+  // Click Action (Trigger mouse click at current cursor position)
+  if (cmd === 'click' || cmd === 'click it' || cmd === 'click link' || cmd === 'tap' || cmd === 'press') {
+    playEarcon('success')
+    const ps = `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class M { [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint c, uint e); public static void C() { mouse_event(2, 0, 0, 0, 0); mouse_event(4, 0, 0, 0, 0); } }'; [M]::C()`
+    exec(`powershell -NoProfile -Command "${ps}"`)
+    return true
+  }
+
   // 1. App Launchers
   if (
     cmd.includes('file explorer') ||

@@ -1369,16 +1369,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Multimodal Voice Click: Click link/target focused or dwelled by Head or Hand cursor
-    if (
+    const isClickVoiceCommand =
       text === 'click' ||
+      text === 'clic' ||
+      text === 'clik' ||
       text === 'click it' ||
       text === 'click link' ||
       text === 'click this' ||
       text === 'click button' ||
+      text === 'click here' ||
       text === 'press' ||
       text === 'tap' ||
-      text === 'select'
-    ) {
+      text === 'select' ||
+      text.startsWith('click ') ||
+      text.endsWith(' click') ||
+      text.includes('click') ||
+      text.includes('tap') ||
+      text.includes('press');
+
+    if (isClickVoiceCommand) {
       messageText.textContent = 'Command: Click';
       sendToActiveTab({ action: 'VOICE_CLICK', type: 'VOICE_CLICK' }).then((res) => {
         if (res && res.success) {

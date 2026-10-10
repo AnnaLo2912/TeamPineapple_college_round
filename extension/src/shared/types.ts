@@ -44,6 +44,8 @@ export interface TrackerConfig {
   magneticRadius: number
   snapStrength: number
   dwellTime: number
+  edgeScroll: boolean
+  edgeScrollBand: number
   isCalibrating?: boolean
 }
 
@@ -55,11 +57,13 @@ export const DEFAULT_CONFIG: TrackerConfig = {
   showWebcamPreview: false,
   magneticRadius: 40,
   snapStrength: 0.3,
-  dwellTime: 800,
+  dwellTime: 2500,
+  edgeScroll: true,
+  edgeScrollBand: 0.15,
 }
 
 export const DWELL_TIME = 800
-export const CLICK_COOLDOWN = 500
+export const CLICK_COOLDOWN = 1200
 
 export type MessageType =
   | 'TOGGLE_TRACKING'
@@ -74,6 +78,8 @@ export type MessageType =
   | 'CALIBRATION_CANCEL'
   | 'CLEAR_CALIBRATION'
   | 'TRACKING_RESULT'
+  | 'CMD_NEXT_TAB'
+  | 'CMD_PREV_TAB'
 
 export interface BaseMessage {
   type: MessageType
@@ -144,6 +150,10 @@ export interface TrackingResultMessage extends BaseMessage {
   mode: TrackingMode
 }
 
+export interface CmdTabMessage extends BaseMessage {
+  type: 'CMD_NEXT_TAB' | 'CMD_PREV_TAB'
+}
+
 export type ExtensionMessage =
   | ToggleTrackingMessage
   | RecenterMessage
@@ -157,3 +167,4 @@ export type ExtensionMessage =
   | CalibrationCancelMessage
   | ClearCalibrationMessage
   | TrackingResultMessage
+  | CmdTabMessage

@@ -236,11 +236,10 @@ export class CalibrationManager {
     this.saveToStorage()
   }
 
-  recenter(cameraCenter: Point): CalibrationData | null {
-    const existing = this.calibrationData.get(this.currentMode)
+  recenter(cameraCenter: Point, mode: TrackingMode): CalibrationData | null {
+    const existing = this.calibrationData.get(mode)
     if (!existing || !existing.matrix) return null
 
-    const screenCenter: Point = { x: 0.5, y: 0.5 }
     const adjustedPoints = existing.points.map(p => ({
       ...p,
       camera: {
@@ -256,10 +255,11 @@ export class CalibrationManager {
       ...existing,
       points: adjustedPoints,
       matrix,
+      mode,
       timestamp: Date.now(),
     }
 
-    this.calibrationData.set(this.currentMode, updated)
+    this.calibrationData.set(mode, updated)
     this.saveToStorage()
     return updated
   }

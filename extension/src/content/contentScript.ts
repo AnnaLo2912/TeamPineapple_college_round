@@ -1,10 +1,11 @@
 import type { TrackerConfig, Point, ClickableElement, TrackingMode, ExtensionMessage } from '../shared/types'
 import { DEFAULT_CONFIG, DWELL_TIME, CLICK_COOLDOWN } from '../shared/types'
-import { CALIBRATION_POINTS } from '../shared/constants'
+import { CALIBRATION_POINTS, DWELL_DETECT_RADIUS, DWELL_EDGE_MARGIN, EDGE_SCROLL_HOLD_MS } from '../shared/constants'
 import { CoordinateMapper } from './tracker/CoordinateMapper'
 import { CursorOverlay } from './overlay/CursorOverlay'
 import { TargetHighlighter } from './overlay/TargetHighlighter'
 import { CalibrationOverlay } from './overlay/CalibrationOverlay'
+import { TabDock } from './overlay/TabDock'
 import { calibrationManager } from './calibration/CalibrationManager'
 import { targetDetector } from './overlay/TargetDetector'
 import { messagingBridge, loadConfig, saveConfig, getCalibration, saveCalibration } from './messaging/MessagingBridge'
@@ -15,10 +16,13 @@ let coordinateMapper: CoordinateMapper | null = null
 let cursorOverlay: CursorOverlay | null = null
 let targetHighlighter: TargetHighlighter | null = null
 let calibrationOverlay: CalibrationOverlay | null = null
+let tabDock: TabDock | null = null
 let lastClickTime = 0
 let currentDwellTarget: ClickableElement | null = null
 let lastRawPoint: Point | null = null
 let trackingEnabled = true
+let edgeScrollState: { dir: -1 | 1; holdingSince: number } | null = null
+let edgeScrollInterval: number | null = null
 
 let calibrationTargetIndex = -1
 let calibrationDwellStart = 0
@@ -27,6 +31,7 @@ function initOverlay() {
   cursorOverlay = new CursorOverlay(config.magneticRadius, config.snapStrength)
   targetHighlighter = new TargetHighlighter()
   calibrationOverlay = new CalibrationOverlay()
+  tabDock = new TabDock()
 }
 
 async function init() {
@@ -35,6 +40,7 @@ async function init() {
   debugLog('content', 'init', { mode: config.mode, mapper: !!coordinateMapper })
 
   cursorOverlay?.setMode(config.mode)
+  cursorOverlay?.setDwellTime(config.dwellTime)
 
   const savedCal = await getCalibration(config.mode)
   if (savedCal) {
@@ -49,6 +55,8 @@ async function init() {
     config.showWebcamPreview = false
     await saveConfig(config)
   }
+
+  tabDock?.show()
 
   // Register this tab with the background so it receives tracking results.
   chrome.runtime.sendMessage({ type: 'TAB_REGISTER' }, () => void chrome.runtime.lastError)
@@ -117,6 +125,7 @@ function handleTrackingResult(rawPoint: Point | null, _confidence: number) {
     cursorOverlay?.updatePosition(null)
     targetHighlighter?.updateTarget(null)
     cancelDwell()
+    stopEdgeScroll()
     return
   }
 
@@ -138,12 +147,21 @@ function handleTrackingResult(rawPoint: Point | null, _confidence: number) {
 }
 
 function updateInteraction(snappedPosition: Point, mappedPoint: Point) {
-  const target = targetDetector.getTargetAtPoint(mappedPoint.x, mappedPoint.y, 20)
+  const target = targetDetector.getTargetAtPoint(snappedPosition.x, snappedPosition.y, DWELL_DETECT_RADIUS)
 
-  if (target && target !== currentDwellTarget) {
+  if (currentDwellTarget) {
+    const keepDwelling =
+      isNearTarget(currentDwellTarget, snappedPosition, DWELL_EDGE_MARGIN) ||
+      (target !== null && sameLogicalTarget(target, currentDwellTarget))
+
+    if (!keepDwelling) {
+      cancelDwell()
+      if (target) {
+        startDwell(target)
+      }
+    }
+  } else if (target) {
     startDwell(target)
-  } else if (!target && currentDwellTarget) {
-    cancelDwell()
   }
 
   if (cursorOverlay) {
@@ -153,6 +171,26 @@ function updateInteraction(snappedPosition: Point, mappedPoint: Point) {
   }
 
   targetHighlighter?.updateTarget(target)
+
+  updateEdgeScroll(mappedPoint, target)
+}
+
+function sameLogicalTarget(a: ClickableElement, b: ClickableElement): boolean {
+  return (
+    a.element === b.element ||
+    b.element.contains(a.element) ||
+    a.element.contains(b.element)
+  )
+}
+
+function isNearTarget(target: ClickableElement, point: Point, margin: number): boolean {
+  const r = target.rect
+  return (
+    point.x >= r.left - margin &&
+    point.x <= r.right + margin &&
+    point.y >= r.top - margin &&
+    point.y <= r.bottom + margin
+  )
 }
 
 function updateCalibration(mappedPoint: Point) {
@@ -193,8 +231,12 @@ function captureCalibrationPoint() {
 
 function startDwell(target: ClickableElement) {
   currentDwellTarget = target
-  ;(target as any).dwellStartTime = Date.now()
-  cursorOverlay?.startDwell(target, executeClick)
+  cursorOverlay?.setDwellTime(config.dwellTime)
+  cursorOverlay?.startDwell(target, (element) => {
+    currentDwellTarget = null
+    executeClick(element)
+  })
+  debugLog('content', 'dwell:start', { tagName: target.tagName })
 }
 
 function cancelDwell() {
@@ -209,27 +251,89 @@ function executeClick(target: ClickableElement) {
 
   if (!target.element.isConnected) return
 
+  debugLog('content', 'dwell:click', { tagName: target.tagName })
+  cursorOverlay?.flashClick()
+
   const element = target.element as HTMLElement
   element.click()
   element.focus()
+}
+
+function updateEdgeScroll(mappedPoint: Point, target: ClickableElement | null) {
+  if (!config.edgeScroll || config.isCalibrating || currentDwellTarget || target) {
+    stopEdgeScroll()
+    return
+  }
+
+  const vh = window.innerHeight
+  let dir: -1 | 1 | 0 = 0
+  if (mappedPoint.y < vh * config.edgeScrollBand) {
+    dir = -1
+  } else if (mappedPoint.y > vh * (1 - config.edgeScrollBand)) {
+    dir = 1
+  }
+
+  if (dir === 0) {
+    stopEdgeScroll()
+    return
+  }
+
+  if (!edgeScrollState) {
+    edgeScrollState = { dir, holdingSince: Date.now() }
+  } else if (edgeScrollState.dir !== dir) {
+    edgeScrollState = { dir, holdingSince: Date.now() }
+    stopEdgeScrollLoop()
+  }
+
+  if (Date.now() - edgeScrollState.holdingSince >= EDGE_SCROLL_HOLD_MS) {
+    startEdgeScrollLoop(edgeScrollState.dir)
+  }
+}
+
+function startEdgeScrollLoop(dir: -1 | 1) {
+  if (edgeScrollInterval !== null) return
+  debugLog('content', 'edge-scroll', { dir })
+  edgeScrollInterval = window.setInterval(() => {
+    window.scrollBy({ top: dir * 40, behavior: 'auto' })
+  }, 16)
+}
+
+function stopEdgeScrollLoop() {
+  if (edgeScrollInterval !== null) {
+    window.clearInterval(edgeScrollInterval)
+    edgeScrollInterval = null
+  }
+}
+
+function stopEdgeScroll() {
+  stopEdgeScrollLoop()
+  edgeScrollState = null
 }
 
 function setEnabled(enabled: boolean) {
   trackingEnabled = enabled
   if (!enabled) {
     cancelDwell()
+    stopEdgeScroll()
     cursorOverlay?.hide()
     targetHighlighter?.hide()
+    tabDock?.hide()
+  } else {
+    tabDock?.show()
   }
 }
 
 function handleRecenter() {
-  if (lastRawPoint && coordinateMapper) {
-    const recentered = calibrationManager.recenter(lastRawPoint)
-    if (recentered) {
-      coordinateMapper.setCalibration(recentered)
-    }
+  if (!lastRawPoint || !coordinateMapper) return
+
+  const recentered = calibrationManager.recenter(lastRawPoint, config.mode)
+  if (recentered) {
+    coordinateMapper.setCalibration(recentered)
+  } else {
+    coordinateMapper.recenterDirect(lastRawPoint)
   }
+  debugLog('content', 'recenter', { mode: config.mode, calibrated: !!recentered })
+  sendStatusUpdate()
 }
 
 async function setMode(mode: TrackingMode) {
@@ -238,6 +342,7 @@ async function setMode(mode: TrackingMode) {
 
   cursorOverlay?.setMode(mode)
   coordinateMapper?.resetSmoothing()
+  coordinateMapper?.resetRecenter()
 
   const cal = await getCalibration(mode)
   if (cal && coordinateMapper) {
@@ -253,6 +358,10 @@ async function updateConfig(updates: Partial<TrackerConfig>) {
   await saveConfig(config)
 
   coordinateMapper?.setConfig(config)
+
+  if (updates.dwellTime !== undefined) {
+    cursorOverlay?.setDwellTime(config.dwellTime)
+  }
 
   if (cursorOverlay && (updates.magneticRadius !== undefined || updates.snapStrength !== undefined)) {
     cursorOverlay.setMagneticParams(config.magneticRadius, config.snapStrength)

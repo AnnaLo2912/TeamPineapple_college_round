@@ -5,6 +5,7 @@ export class CoordinateMapper {
   private calibration: CalibrationData | null = null
   private smoothedPoint: Point | null = null
   private lastRawPoint: Point | null = null
+  private recenterOrigin: Point = { x: 0.5, y: 0.5 }
   private viewportWidth: number
   private viewportHeight: number
 
@@ -26,6 +27,7 @@ export class CoordinateMapper {
 
   setCalibration(data: CalibrationData) {
     this.calibration = data
+    this.resetRecenter()
   }
 
   getCalibration(): CalibrationData | null {
@@ -34,6 +36,15 @@ export class CoordinateMapper {
 
   clearCalibration() {
     this.calibration = null
+    this.resetRecenter()
+  }
+
+  recenterDirect(cameraCenter: Point) {
+    this.recenterOrigin = { ...cameraCenter }
+  }
+
+  resetRecenter() {
+    this.recenterOrigin = { x: 0.5, y: 0.5 }
   }
 
   mapPoint(rawPoint: Point): Point {
@@ -45,13 +56,11 @@ export class CoordinateMapper {
 
   private mapDirect(rawPoint: Point): Point {
     const { sensitivity, deadZone } = this.config
-    const centerX = 0.5
-    const centerY = 0.5
 
-    // Webcam is mirrored: user's right = landmark x decreases
-    // Invert X so natural movement: left head = left cursor
-    let dx = (centerX - rawPoint.x) * sensitivity
-    let dy = (rawPoint.y - centerY) * sensitivity
+    // Webcam is mirrored: user's right = landmark x decreases.
+    // With a recenter origin, wherever the head is maps to screen center.
+    let dx = (this.recenterOrigin.x - rawPoint.x) * sensitivity
+    let dy = (rawPoint.y - this.recenterOrigin.y) * sensitivity
 
     const dist = Math.hypot(dx, dy)
     if (dist < deadZone) {

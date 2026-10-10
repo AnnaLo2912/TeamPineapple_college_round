@@ -63,6 +63,23 @@ function forwardToActiveTab(message: any) {
   chrome.tabs.sendMessage(tabId, message, () => void chrome.runtime.lastError)
 }
 
+function switchTab(direction: -1 | 1) {
+  chrome.tabs.query({ currentWindow: true }, (tabs) => {
+    if (!tabs.length) return
+    const sorted = tabs.slice().sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    const activePos = sorted.findIndex((t) => t.active)
+    let nextPos = activePos < 0 ? 0 : activePos + direction
+    if (nextPos >= sorted.length) nextPos = 0
+    if (nextPos < 0) nextPos = sorted.length - 1
+    const next = sorted[nextPos]
+    if (next?.id) {
+      activeTabId = next.id
+      chrome.tabs.update(next.id, { active: true })
+      debugLog('background', 'switchTab', { direction, tabId: next.id })
+    }
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Offscreen document management
 // ---------------------------------------------------------------------------
@@ -176,7 +193,9 @@ chrome.runtime.onInstalled.addListener((details) => {
         showWebcamPreview: false,
         magneticRadius: 40,
         snapStrength: 0.3,
-        dwellTime: 800,
+        dwellTime: 2500,
+        edgeScroll: true,
+        edgeScrollBand: 0.15,
       }
     })
   }
@@ -202,6 +221,10 @@ chrome.commands.onCommand.addListener((command) => {
     setTrackingEnabled(!trackingEnabled)
   } else if (command === 'recenter') {
     forwardToAllTabs({ type: 'RECENTER', timestamp: Date.now() })
+  } else if (command === 'next-tab') {
+    switchTab(1)
+  } else if (command === 'prev-tab') {
+    switchTab(-1)
   }
 })
 
@@ -321,6 +344,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'CLEAR_CALIBRATION' || message.type === 'RECENTER') {
     forwardToAllTabs(message)
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'CMD_NEXT_TAB' || message.type === 'CMD_PREV_TAB') {
+    switchTab(message.type === 'CMD_NEXT_TAB' ? 1 : -1)
     sendResponse({ success: true })
     return true
   }

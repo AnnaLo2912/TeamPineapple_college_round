@@ -56,6 +56,20 @@
         "mac": "Alt+R"
       },
       "description": "Recenter cursor position"
+    },
+    "next-tab": {
+      "suggested_key": {
+        "default": "Alt+PageDown",
+        "mac": "Alt+PageDown"
+      },
+      "description": "Switch to next tab"
+    },
+    "prev-tab": {
+      "suggested_key": {
+        "default": "Alt+PageUp",
+        "mac": "Alt+PageUp"
+      },
+      "description": "Switch to previous tab"
     }
   }
 }

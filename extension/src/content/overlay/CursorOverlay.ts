@@ -16,6 +16,7 @@ export class CursorOverlay {
   private animationId: number | null = null
   private dwellStartTime: number = 0
   private onDwellCompleteCallback: ((element: ClickableElement) => void) | null = null
+  private dwellTime: number = DWELL_TIME
 
   constructor(magneticRadius: number, snapStrength: number) {
     this.magneticRadius = magneticRadius
@@ -243,6 +244,10 @@ export class CursorOverlay {
     this.snapStrength = strength
   }
 
+  setDwellTime(ms: number) {
+    this.dwellTime = ms
+  }
+
   startDwell(target: ClickableElement, onComplete: (element: ClickableElement) => void) {
     this.isDwelling = true
     this.dwellProgress = 0
@@ -261,7 +266,7 @@ export class CursorOverlay {
     if (!this.isDwelling) return
 
     const elapsed = Date.now() - this.dwellStartTime
-    this.dwellProgress = Math.min(elapsed / DWELL_TIME, 1)
+    this.dwellProgress = Math.min(elapsed / this.dwellTime, 1)
 
     const circumference = (DWELL_RING_SIZE - 6) * Math.PI * 2
     const dashArray = `${circumference * this.dwellProgress} ${circumference}`
@@ -316,6 +321,19 @@ export class CursorOverlay {
     if (this.cursorElement) {
       this.cursorElement.style.display = 'block'
     }
+  }
+
+  flashClick() {
+    if (!this.cursorElement) return
+    const el = this.cursorElement
+    el.style.transformOrigin = 'center'
+    el.style.transition = 'transform 60ms ease-out'
+    el.style.transform = 'scale(1.45)'
+    window.setTimeout(() => {
+      if (!this.cursorElement) return
+      this.cursorElement.style.transition = 'transform 140ms ease-in'
+      this.cursorElement.style.transform = 'scale(1)'
+    }, 60)
   }
 
   hide() {

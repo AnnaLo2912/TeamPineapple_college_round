@@ -9,6 +9,8 @@ interface PopupState {
   sensitivity: number
   smoothing: number
   deadZone: number
+  dwellTime: number
+  edgeScroll: boolean
   hasFaceCalibration: boolean
   hasHandCalibration: boolean
   unsupportedPage: boolean
@@ -21,6 +23,8 @@ const Popup: React.FC = () => {
     sensitivity: 1.5,
     smoothing: 0.15,
     deadZone: 0.02,
+    dwellTime: 2500,
+    edgeScroll: true,
     hasFaceCalibration: false,
     hasHandCalibration: false,
     unsupportedPage: false,
@@ -48,6 +52,8 @@ const Popup: React.FC = () => {
           sensitivity: config.sensitivity,
           smoothing: config.smoothing,
           deadZone: config.deadZone,
+          dwellTime: config.dwellTime,
+          edgeScroll: config.edgeScroll ?? true,
           hasFaceCalibration: !!faceCal?.matrix,
           hasHandCalibration: !!handCal?.matrix,
           unsupportedPage: unsupported,
@@ -253,6 +259,38 @@ const Popup: React.FC = () => {
 
           <div style={styles.section}>
             <div style={styles.row}>
+              <span style={styles.label}>Click dwell</span>
+              <input
+                type="range"
+                min="800"
+                max="4000"
+                step="100"
+                value={state.dwellTime}
+                onChange={(e) => updateConfig({ dwellTime: parseFloat(e.target.value) })}
+                style={styles.slider}
+                disabled={!state.isEnabled}
+              />
+              <span style={styles.value}>{(state.dwellTime / 1000).toFixed(1)}s</span>
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <label style={styles.toggleLabel}>
+              <input
+                type="checkbox"
+                checked={state.edgeScroll}
+                onChange={(e) => updateConfig({ edgeScroll: e.target.checked })}
+                style={styles.toggleInput}
+              />
+              <span style={styles.toggleText}>Edge scrolling</span>
+              <span style={state.edgeScroll ? styles.statusActive : styles.statusInactive}>
+                {state.edgeScroll ? 'On' : 'Off'}
+              </span>
+            </label>
+          </div>
+
+          <div style={styles.section}>
+            <div style={styles.row}>
               <span style={styles.label}>Calibration</span>
               <div style={styles.calibrationButtons}>
                 <button
@@ -310,7 +348,7 @@ const Popup: React.FC = () => {
         </div>
         <div style={styles.shortcut}>
           <kbd style={styles.kbd}>Dwell</kbd>
-          <span>Click (800ms)</span>
+          <span>Click ({(state.dwellTime / 1000).toFixed(1)}s)</span>
         </div>
       </div>
     </div>
@@ -355,7 +393,9 @@ const DEFAULT_CONFIG: TrackerConfig = {
   showWebcamPreview: false,
   magneticRadius: 40,
   snapStrength: 0.3,
-  dwellTime: 800,
+  dwellTime: 2500,
+  edgeScroll: true,
+  edgeScrollBand: 0.15,
 }
 
 const styles: Record<string, React.CSSProperties> = {

@@ -82,7 +82,7 @@ export class TargetDetector {
     return targets
   }
 
-  getTargetAtPoint(x: number, y: number, radius: number = 20): ClickableElement | null {
+  getTargetAtPoint(x: number, y: number, radius: number = 24): ClickableElement | null {
     const targets = this.getTargets()
     let bestTarget: ClickableElement | null = null
     let bestDistance = Infinity

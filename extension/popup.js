@@ -21,6 +21,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const grantMicBtn = document.getElementById('grantMicBtn');
   const toggleNumbersBtn = document.getElementById('toggleNumbersBtn');
   const toggleNumbersText = document.getElementById('toggleNumbersText');
+  const modeBlindBtn = document.getElementById('modeBlind');
+  const blindModeToggle = document.getElementById('blindModeToggle');
+  const blindModeCard = document.getElementById('blindModeCard');
 
   // Backend Express Base URL (supports 5001 as default to prevent macOS AirPlay port 5000 conflicts, with auto-fallback)
   let backendBaseUrl = 'http://localhost:5001';
@@ -479,7 +482,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const Mode = {
     COMMAND: 'command',
     DICTATION: 'dictation',
-    READING: 'reading'
+    READING: 'reading',
+    BLIND: 'blind'
   };
 
   // State Management
@@ -491,12 +495,39 @@ document.addEventListener('DOMContentLoaded', () => {
   const modeReadingBtn = document.getElementById('modeReading');
 
   /**
+   * Check if transcript is an Eyes-Free Blind Navigation command
+   */
+  function isBlindCommand(lower, transcript) {
+    const blindCommands = [
+      'go to search', 'cursor go to search', 'search bar', 'focus search', 'search input', 'find search',
+      'done', 'finished', 'query done', 'done typing', 'search done',
+      'search', 'execute search', 'submit search', 'google search', 'run search',
+      'read links', 'read results', 'read top links', 'read search results', 'read result links',
+      'blind mode', 'eyes free', 'eyes free mode', 'enable blind mode', 'start blind mode',
+      'disable blind mode', 'stop blind mode', 'exit blind mode', 'turn off blind mode',
+      'scroll down', 'scroll up', 'page down', 'page up',
+      'stop', 'stop reading', 'cancel',
+      'clear text', 'clear input', 'clear',
+      'backspace', 'delete word', 'back space'
+    ];
+
+    if (blindCommands.includes(lower)) return true;
+
+    // Pattern for click link N, click result N, open N, etc.
+    if (/^(?:click|open|select|press|go\s*to)\s+(?:link\s+|result\s+|number\s+|#)?\d{1,3}$/i.test(lower)) return true;
+    if (/^(?:link|result|number)\s+#?\d{1,3}$/i.test(lower)) return true;
+    if (/^(?:click|open)\s+(?:link\s+|result\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten)$/i.test(lower)) return true;
+
+    return false;
+  }
+
+  /**
    * Switch Active Extension Mode
    */
   function setActiveMode(mode) {
     activeMode = mode;
 
-    [modeCommandBtn, modeDictationBtn, modeReadingBtn].forEach(btn => {
+    [modeCommandBtn, modeDictationBtn, modeReadingBtn, modeBlindBtn].forEach(btn => {
       if (btn) {
         btn.classList.remove('active');
         btn.setAttribute('aria-selected', 'false');
@@ -527,7 +558,70 @@ document.addEventListener('DOMContentLoaded', () => {
       if (currentState === State.IDLE) {
         messageText.textContent = 'Reading Mode active. Conversational form filling & reading active.';
       }
+    } else if (mode === Mode.BLIND) {
+      if (modeBlindBtn) {
+        modeBlindBtn.classList.add('active');
+        modeBlindBtn.setAttribute('aria-selected', 'true');
+      }
+      if (currentState === State.IDLE) {
+        messageText.textContent = 'Eyes-Free Blind Mode active. Say "Go to search", "Read links", or "Click link 1".';
+      }
     }
+  }
+
+  /**
+   * Update Eyes-Free Blind Mode state across storage, UI, and active tab
+   */
+  async function updateBlindModeState(enabled) {
+    if (blindModeToggle) {
+      blindModeToggle.checked = enabled;
+    }
+
+    if (enabled) {
+      setActiveMode(Mode.BLIND);
+    } else if (activeMode === Mode.BLIND) {
+      setActiveMode(Mode.COMMAND);
+    }
+
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ blindModeEnabled: enabled });
+    }
+
+    const res = await sendToActiveTab({ action: 'SET_BLIND_MODE', enabled });
+    if (enabled) {
+      setUIState(State.COMPLETED, 'Eyes-Free Blind Navigation enabled.');
+    } else {
+      setUIState(State.COMPLETED, 'Eyes-Free Blind Navigation disabled.');
+    }
+    return res;
+  }
+
+  /**
+   * Synchronize Eyes-Free Blind Mode toggle and UI on startup
+   */
+  function syncBlindModeStatus() {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(['blindModeEnabled'], (result) => {
+        const isEnabled = !!result.blindModeEnabled;
+        if (blindModeToggle) {
+          blindModeToggle.checked = isEnabled;
+        }
+        if (isEnabled && activeMode !== Mode.BLIND) {
+          setActiveMode(Mode.BLIND);
+        }
+      });
+    }
+
+    sendToActiveTab({ action: 'GET_BLIND_MODE_STATUS' }).then(res => {
+      if (res && res.success && typeof res.isBlindMode === 'boolean') {
+        if (blindModeToggle) {
+          blindModeToggle.checked = res.isBlindMode;
+        }
+        if (res.isBlindMode && activeMode !== Mode.BLIND) {
+          setActiveMode(Mode.BLIND);
+        }
+      }
+    });
   }
 
   /**
@@ -596,6 +690,43 @@ document.addEventListener('DOMContentLoaded', () => {
       if (activeMode === Mode.COMMAND) {
         setUIState(State.COMPLETED, `Command: "${transcript}"`);
         executeVoiceCommand(transcript);
+      } else if (activeMode === Mode.BLIND) {
+        // Blind Mode Voice Routing
+        if (isBlindCommand(lower, transcript)) {
+          setUIState(State.COMPLETED, `Blind Command: "${transcript}"`);
+          executeVoiceCommand(transcript);
+        } else {
+          // Speech dictation into active input (e.g. search query)
+          let trailingAction = null;
+          let dictationPayload = transcript;
+
+          if (/\b(?:done|finished)$/i.test(dictationPayload)) {
+            trailingAction = 'done';
+            dictationPayload = dictationPayload.replace(/\b(?:done|finished)$/i, '').trim();
+          } else if (/\b(?:search)$/i.test(dictationPayload)) {
+            trailingAction = 'search';
+            dictationPayload = dictationPayload.replace(/\b(?:search)$/i, '').trim();
+          }
+
+          if (dictationPayload.length > 0) {
+            const insertRes = await sendToActiveTab({ action: 'INSERT_DICTATION', text: dictationPayload });
+            if (insertRes && insertRes.success) {
+              setUIState(State.COMPLETED, `Entered: "${dictationPayload}". (Say "Done" or "Search")`);
+            } else {
+              setUIState(State.COMPLETED, `Dictated: "${dictationPayload}".`);
+            }
+          }
+
+          if (trailingAction === 'done') {
+            setTimeout(() => {
+              executeVoiceCommand('done');
+            }, 300);
+          } else if (trailingAction === 'search') {
+            setTimeout(() => {
+              executeVoiceCommand('search');
+            }, 400);
+          }
+        }
       } else if (activeMode === Mode.DICTATION || activeMode === Mode.READING) {
         // Voice action commands during dictation & reading
         const isActionCommand = [
@@ -609,7 +740,11 @@ document.addEventListener('DOMContentLoaded', () => {
           'undo', 'uncheck', 'deselect', 'clear options',
           'submit', 'submit form', 'send form',
           'show numbers', 'show links', 'show badges', 'numbers',
-          'hide numbers', 'hide links', 'hide badges'
+          'hide numbers', 'hide links', 'hide badges',
+          'go to search', 'cursor go to search', 'search bar', 'focus search',
+          'done', 'finished', 'query done', 'search', 'execute search',
+          'read links', 'read results', 'read top links',
+          'blind mode', 'eyes free', 'enable blind mode', 'disable blind mode'
         ].includes(lower) || extractSpokenNumber(transcript, true) !== null;
 
         if (isActionCommand) {
@@ -1221,8 +1356,103 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!cmdText) return;
 
     // Normalise transcript text (lowercase, remove punctuation, collapse whitespace)
-    const text = cmdText.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+    let text = cmdText.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
     console.log('[Handsfree Command] Executing normalized command:', text);
+
+    // Convert spoken word numbers 1-10 to digits for flexible pattern matching
+    const wordDigits = {
+      one: '1', two: '2', three: '3', four: '4', five: '5',
+      six: '6', seven: '7', eight: '8', nine: '9', ten: '10'
+    };
+    for (const [w, d] of Object.entries(wordDigits)) {
+      text = text.replace(new RegExp(`\\b${w}\\b`, 'g'), d);
+    }
+
+    // Eyes-Free Blind Mode Activation / Deactivation
+    if (text === 'blind mode' || text === 'eyes free' || text === 'eyes free mode' || text === 'enable blind mode' || text === 'start blind mode') {
+      messageText.textContent = 'Command: Enable Eyes-Free Blind Mode';
+      updateBlindModeState(true);
+      return;
+    } else if (text === 'disable blind mode' || text === 'stop blind mode' || text === 'exit blind mode' || text === 'turn off blind mode') {
+      messageText.textContent = 'Command: Disable Eyes-Free Blind Mode';
+      updateBlindModeState(false);
+      return;
+    }
+
+    // Direct Search Bar Auto-Focus & Glide
+    if (text === 'go to search' || text === 'cursor go to search' || text === 'search bar' || text === 'focus search' || text === 'search input' || text === 'find search') {
+      messageText.textContent = 'Command: Go to search';
+      sendToActiveTab({ action: 'GO_TO_SEARCH' }).then(res => {
+        if (res && res.success) {
+          setUIState(State.COMPLETED, res.message || 'Search input focused. Dictate query and say "Done".');
+        } else {
+          setUIState(State.ERROR, res?.error || 'Could not find search bar on page.');
+        }
+      });
+      return;
+    }
+
+    // Dictate Search Term -> Say "Done"
+    if (text === 'done' || text === 'finished' || text === 'query done' || text === 'done typing' || text === 'search done') {
+      messageText.textContent = 'Command: Query finished';
+      sendToActiveTab({ action: 'FINISH_QUERY' }).then(res => {
+        if (res && res.success) {
+          setUIState(State.COMPLETED, `Query ready: "${res.query || ''}". Say "Search" to execute.`);
+        } else {
+          setUIState(State.COMPLETED, 'Query finished. Say "Search" to execute.');
+        }
+      });
+      return;
+    }
+
+    // Search Execution -> Say "Search"
+    if (text === 'search' || text === 'execute search' || text === 'submit search' || text === 'run search' || text === 'google search') {
+      messageText.textContent = 'Command: Execute search';
+      sendToActiveTab({ action: 'EXECUTE_SEARCH' }).then(res => {
+        if (res && res.success) {
+          setUIState(State.COMPLETED, 'Search submitted.');
+        } else {
+          setUIState(State.ERROR, res?.error || 'Could not submit search.');
+        }
+      });
+      return;
+    }
+
+    // Link Reader -> Say "Read links" / "Read results"
+    if (text === 'read links' || text === 'read results' || text === 'read top links' || text === 'read search results' || text === 'read result links') {
+      messageText.textContent = 'Command: Read search results';
+      sendToActiveTab({ action: 'READ_SEARCH_RESULTS' }).then(res => {
+        if (res && res.success) {
+          setUIState(State.COMPLETED, `Reading ${res.count || 0} results. Say "Click link 1" to open.`);
+        } else {
+          setUIState(State.ERROR, res?.error || 'No search results found to read.');
+        }
+      });
+      return;
+    }
+
+    // Direct Search Result Click ("Click link 1", "Click 1", "Open result 1")
+    const searchResultMatch = text.match(/^(?:click|open)\s+(?:link\s+|result\s+)?(\d{1,2})$/) || text.match(/^(?:link|result)\s+(\d{1,2})$/);
+    if (searchResultMatch && searchResultMatch[1]) {
+      const resultIndex = parseInt(searchResultMatch[1], 10);
+      messageText.textContent = `Command: Open result #${resultIndex}`;
+      sendToActiveTab({ action: 'CLICK_SEARCH_RESULT', number: resultIndex }).then(res => {
+        if (res && res.success) {
+          setUIState(State.COMPLETED, `Opening result #${resultIndex}: "${res.title}"`);
+        } else {
+          // Fallback to standard numbered link overlay selection
+          sendToActiveTab({ action: 'CLICK_NUMBERED_LINK', number: resultIndex }).then(numRes => {
+            if (numRes && numRes.success) {
+              setUIState(State.COMPLETED, `Clicked #${resultIndex}: "${numRes.label}"`);
+              speakText(`Selected ${numRes.label || resultIndex}`);
+            } else {
+              setUIState(State.ERROR, res?.error || numRes?.error || `Link #${resultIndex} not found.`);
+            }
+          });
+        }
+      });
+      return;
+    }
 
     // Numbered Links Voice Commands
     if (text === 'show numbers' || text === 'show links' || text === 'show badges' || text === 'numbers') {
@@ -1329,6 +1559,22 @@ document.addEventListener('DOMContentLoaded', () => {
   if (modeCommandBtn) modeCommandBtn.addEventListener('click', () => setActiveMode(Mode.COMMAND));
   if (modeDictationBtn) modeDictationBtn.addEventListener('click', () => setActiveMode(Mode.DICTATION));
   if (modeReadingBtn) modeReadingBtn.addEventListener('click', () => setActiveMode(Mode.READING));
+  if (modeBlindBtn) modeBlindBtn.addEventListener('click', () => updateBlindModeState(true));
+
+  if (blindModeToggle) {
+    blindModeToggle.addEventListener('change', (e) => {
+      updateBlindModeState(e.target.checked);
+    });
+  }
+
+  // Keyboard shortcut Alt+B inside popup
+  window.addEventListener('keydown', (e) => {
+    if (e.altKey && (e.key === 'b' || e.key === 'B')) {
+      e.preventDefault();
+      const newState = !blindModeToggle?.checked;
+      updateBlindModeState(newState);
+    }
+  });
 
   if (readPlayBtn) readPlayBtn.addEventListener('click', () => {
     ensureAudioContext();
@@ -1384,6 +1630,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setUIState(State.IDLE);
   checkBackendHealth();
   syncNumberedLinksStatus();
+  syncBlindModeStatus();
 });
 
 

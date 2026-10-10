@@ -26,15 +26,16 @@ export async function processVoiceInput(input) {
   // Check Screen Dictator commands
   const lower = text.toLowerCase()
   if (
-    lower.includes('what is on screen') ||
-    lower.includes("what's on screen") ||
+    lower.includes('screen') ||
+    lower.includes('desktop') ||
+    lower.includes('what is on') ||
+    lower.includes("what's on") ||
     lower.includes('read screen') ||
     lower.includes('active window') ||
-    lower.includes('desktop') ||
-    lower.includes('index topped') ||
-    lower.includes('next stop') ||
+    lower.includes('current window') ||
     lower.includes('where am i') ||
-    lower === 'screen'
+    lower.includes('index topped') ||
+    lower.includes('next stop')
   ) {
     await announceActiveWindow()
     return

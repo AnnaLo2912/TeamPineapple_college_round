@@ -6,6 +6,7 @@ export class CursorOverlay {
   private svgElement: SVGElement | null = null
   private dwellRingElement: SVGElement | null = null
   private labelElement: HTMLElement | null = null
+  private statusHud: HTMLElement | null = null
   private currentPosition: Point | null = null
   private targetElement: ClickableElement | null = null
   private isDwelling: boolean = false
@@ -77,8 +78,43 @@ export class CursorOverlay {
     `
     this.cursorElement.appendChild(this.labelElement)
 
+    this.statusHud = document.createElement('div')
+    this.statusHud.className = 'handsfree-status-hud'
+    this.statusHud.style.cssText = `
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      padding: 8px 16px;
+      background: rgba(10, 10, 20, 0.85);
+      color: #4ecdc4;
+      border: 1px solid rgba(78,205,196,0.5);
+      border-radius: 999px;
+      font-size: 13px;
+      font-family: system-ui, sans-serif;
+      font-weight: 600;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 2147483647;
+      backdrop-filter: blur(4px);
+      display: none;
+    `
+
     document.body.appendChild(this.cursorElement)
+    document.body.appendChild(this.statusHud)
     this.buildSVG()
+  }
+
+  showStatus(text: string) {
+    if (!this.statusHud) return
+    this.statusHud.textContent = text
+    this.statusHud.style.display = 'block'
+  }
+
+  hideStatus() {
+    if (this.statusHud) {
+      this.statusHud.style.display = 'none'
+    }
   }
 
   private buildSVG() {
@@ -350,5 +386,7 @@ export class CursorOverlay {
     this.svgElement = null
     this.dwellRingElement = null
     this.labelElement = null
+    this.statusHud?.remove()
+    this.statusHud = null
   }
 }

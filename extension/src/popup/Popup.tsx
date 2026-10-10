@@ -11,6 +11,8 @@ interface PopupState {
   deadZone: number
   dwellTime: number
   edgeScroll: boolean
+  snapStrength: number
+  magneticRadius: number
   hasFaceCalibration: boolean
   hasHandCalibration: boolean
   unsupportedPage: boolean
@@ -25,6 +27,8 @@ const Popup: React.FC = () => {
     deadZone: 0.02,
     dwellTime: 2500,
     edgeScroll: true,
+    snapStrength: 0.75,
+    magneticRadius: 64,
     hasFaceCalibration: false,
     hasHandCalibration: false,
     unsupportedPage: false,
@@ -54,6 +58,8 @@ const Popup: React.FC = () => {
           deadZone: config.deadZone,
           dwellTime: config.dwellTime,
           edgeScroll: config.edgeScroll ?? true,
+          snapStrength: config.snapStrength ?? 0.75,
+          magneticRadius: config.magneticRadius ?? 64,
           hasFaceCalibration: !!faceCal?.matrix,
           hasHandCalibration: !!handCal?.matrix,
           unsupportedPage: unsupported,
@@ -275,6 +281,40 @@ const Popup: React.FC = () => {
           </div>
 
           <div style={styles.section}>
+            <div style={styles.row}>
+              <span style={styles.label}>Snap strength</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={state.snapStrength}
+                onChange={(e) => updateConfig({ snapStrength: parseFloat(e.target.value) })}
+                style={styles.slider}
+                disabled={!state.isEnabled}
+              />
+              <span style={styles.value}>{Math.round(state.snapStrength * 100)}%</span>
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <div style={styles.row}>
+              <span style={styles.label}>Snap radius</span>
+              <input
+                type="range"
+                min="20"
+                max="140"
+                step="4"
+                value={state.magneticRadius}
+                onChange={(e) => updateConfig({ magneticRadius: parseFloat(e.target.value) })}
+                style={styles.slider}
+                disabled={!state.isEnabled}
+              />
+              <span style={styles.value}>{state.magneticRadius}px</span>
+            </div>
+          </div>
+
+          <div style={styles.section}>
             <label style={styles.toggleLabel}>
               <input
                 type="checkbox"
@@ -282,7 +322,7 @@ const Popup: React.FC = () => {
                 onChange={(e) => updateConfig({ edgeScroll: e.target.checked })}
                 style={styles.toggleInput}
               />
-              <span style={styles.toggleText}>Edge scrolling</span>
+              <span style={styles.toggleText}>Continuous scrolling</span>
               <span style={state.edgeScroll ? styles.statusActive : styles.statusInactive}>
                 {state.edgeScroll ? 'On' : 'Off'}
               </span>
@@ -347,6 +387,10 @@ const Popup: React.FC = () => {
           <span>Recenter</span>
         </div>
         <div style={styles.shortcut}>
+          <kbd style={styles.kbd}>🕹</kbd>
+          <span>Left dock: glide cursor / scroll</span>
+        </div>
+        <div style={styles.shortcut}>
           <kbd style={styles.kbd}>Dwell</kbd>
           <span>Click ({(state.dwellTime / 1000).toFixed(1)}s)</span>
         </div>
@@ -391,8 +435,8 @@ const DEFAULT_CONFIG: TrackerConfig = {
   deadZone: 0.02,
   smoothing: 0.15,
   showWebcamPreview: false,
-  magneticRadius: 40,
-  snapStrength: 0.3,
+  magneticRadius: 64,
+  snapStrength: 0.75,
   dwellTime: 2500,
   edgeScroll: true,
   edgeScrollBand: 0.15,

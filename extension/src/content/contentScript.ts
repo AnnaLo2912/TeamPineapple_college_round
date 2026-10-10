@@ -1,13 +1,31 @@
 import type { TrackerConfig, Point, ClickableElement, TrackingMode, ExtensionMessage } from '../shared/types'
 import { DEFAULT_CONFIG, DWELL_TIME, CLICK_COOLDOWN } from '../shared/types'
-import { CALIBRATION_POINTS, DWELL_DETECT_RADIUS, DWELL_EDGE_MARGIN, EDGE_SCROLL_HOLD_MS } from '../shared/constants'
+import {
+  CALIBRATION_POINTS,
+  DWELL_DETECT_RADIUS,
+  DWELL_EDGE_MARGIN,
+  EDGE_SCROLL_HOLD_MS,
+  NUDGE_ACCEL_MS,
+  NUDGE_MAX_SPEED,
+  SCROLL_ACCEL_MS,
+  SCROLL_MIN_SPEED,
+  SCROLL_MAX_SPEED,
+} from '../shared/constants'
 import { CoordinateMapper } from './tracker/CoordinateMapper'
 import { CursorOverlay } from './overlay/CursorOverlay'
 import { TargetHighlighter } from './overlay/TargetHighlighter'
 import { CalibrationOverlay } from './overlay/CalibrationOverlay'
-import { TabDock } from './overlay/TabDock'
+import { TabDock, type NudgeDirection, type TabDirection } from './overlay/TabDock'
 import { calibrationManager } from './calibration/CalibrationManager'
 import { targetDetector } from './overlay/TargetDetector'
+import {
+  dispatchHover,
+  dispatchClickSequence,
+  dispatchDragStart,
+  dispatchDragMove,
+  dispatchDragEnd,
+  isSliderLike,
+} from './interaction/PointerInteractor'
 import { messagingBridge, loadConfig, saveConfig, getCalibration, saveCalibration } from './messaging/MessagingBridge'
 import { debugLog, debugEvery } from '../shared/debug'
 
@@ -20,9 +38,32 @@ let tabDock: TabDock | null = null
 let lastClickTime = 0
 let currentDwellTarget: ClickableElement | null = null
 let lastRawPoint: Point | null = null
+let lastSnappedPoint: Point | null = null
+let lastDrawnPoint: Point | null = null
 let trackingEnabled = true
+
 let edgeScrollState: { dir: -1 | 1; holdingSince: number } | null = null
-let edgeScrollInterval: number | null = null
+
+let nudgeActive = false
+let nudgeDecelerating = false
+let nudgeDir: NudgeDirection = 'right'
+let nudgeOffset: Point = { x: 0, y: 0 }
+let nudgeSpeed = 0
+let nudgeStart = 0
+let nudgeFrame: number | null = null
+
+let scrollActive = false
+let scrollDir: -1 | 1 = 1
+let scrollSpeed = 0
+let scrollStart = 0
+let scrollFrame: number | null = null
+
+let dragActive = false
+let dragTarget: ClickableElement | null = null
+let dragFrame: number | null = null
+let dragElement: Element | null = null
+
+let lastHoverTime = 0
 
 let calibrationTargetIndex = -1
 let calibrationDwellStart = 0
@@ -31,7 +72,27 @@ function initOverlay() {
   cursorOverlay = new CursorOverlay(config.magneticRadius, config.snapStrength)
   targetHighlighter = new TargetHighlighter()
   calibrationOverlay = new CalibrationOverlay()
-  tabDock = new TabDock()
+  tabDock = new TabDock({
+    onNudge: (dir) => startNudge(dir),
+    onStop: () => {
+      stopScrollDrive()
+      stopNudge()
+    },
+    onScroll: (dir) => {
+      stopNudge()
+      toggleScrollDrive(dir)
+    },
+    onRecenter: () => {
+      stopScrollDrive()
+      stopNudge()
+      handleRecenter()
+    },
+    onTab: (dir) => {
+      stopScrollDrive()
+      stopNudge()
+      sendTabCommand(dir)
+    },
+  })
 }
 
 async function init() {
@@ -125,7 +186,8 @@ function handleTrackingResult(rawPoint: Point | null, _confidence: number) {
     cursorOverlay?.updatePosition(null)
     targetHighlighter?.updateTarget(null)
     cancelDwell()
-    stopEdgeScroll()
+    stopScrollDrive()
+    pauseNudge()
     return
   }
 
@@ -139,11 +201,29 @@ function handleTrackingResult(rawPoint: Point | null, _confidence: number) {
     targetDetector.applyMagneticSnap(mappedPoint.x, mappedPoint.y, config.magneticRadius, config.snapStrength) ||
     mappedPoint
 
+  lastSnappedPoint = snappedPosition
+
   if (config.isCalibrating) {
     updateCalibration(mappedPoint)
-  } else {
-    updateInteraction(snappedPosition, mappedPoint)
+    return
   }
+
+  if (nudgeActive || nudgeDecelerating) {
+    cancelDwell()
+    renderNudgeCursor()
+    targetHighlighter?.updateTarget(null)
+    return
+  }
+
+  if (scrollActive) {
+    cancelDwell()
+    cursorOverlay?.updatePosition(snappedPosition)
+    cursorOverlay?.updateTarget(null)
+    targetHighlighter?.updateTarget(null)
+    return
+  }
+
+  updateInteraction(snappedPosition, mappedPoint)
 }
 
 function updateInteraction(snappedPosition: Point, mappedPoint: Point) {
@@ -164,6 +244,8 @@ function updateInteraction(snappedPosition: Point, mappedPoint: Point) {
     startDwell(target)
   }
 
+  lastDrawnPoint = snappedPosition
+
   if (cursorOverlay) {
     cursorOverlay.updatePosition(snappedPosition)
     cursorOverlay.updateTarget(target)
@@ -172,7 +254,32 @@ function updateInteraction(snappedPosition: Point, mappedPoint: Point) {
 
   targetHighlighter?.updateTarget(target)
 
+  pulseHover(snappedPosition)
   updateEdgeScroll(mappedPoint, target)
+}
+
+function pulseHover(position: Point) {
+  const now = Date.now()
+  if (now - lastHoverTime < 90) return
+  lastHoverTime = now
+  dispatchHover(position.x, position.y)
+}
+
+function renderNudgeCursor() {
+  if (!lastSnappedPoint) return
+  const position = clampToViewport({
+    x: lastSnappedPoint.x + nudgeOffset.x,
+    y: lastSnappedPoint.y + nudgeOffset.y,
+  })
+  lastDrawnPoint = position
+  cursorOverlay?.updatePosition(position)
+}
+
+function clampToViewport(point: Point): Point {
+  return {
+    x: Math.max(2, Math.min(window.innerWidth - 2, point.x)),
+    y: Math.max(2, Math.min(window.innerHeight - 2, point.y)),
+  }
 }
 
 function sameLogicalTarget(a: ClickableElement, b: ClickableElement): boolean {
@@ -232,16 +339,27 @@ function captureCalibrationPoint() {
 function startDwell(target: ClickableElement) {
   currentDwellTarget = target
   cursorOverlay?.setDwellTime(config.dwellTime)
+
+  const slider = isSliderLike(target.element)
+  if (slider) {
+    startDrag(target)
+  }
+
   cursorOverlay?.startDwell(target, (element) => {
     currentDwellTarget = null
-    executeClick(element)
+    if (dragActive) {
+      endDrag()
+    } else {
+      executeClick(element)
+    }
   })
-  debugLog('content', 'dwell:start', { tagName: target.tagName })
+  debugLog('content', 'dwell:start', { tagName: target.tagName, slider })
 }
 
 function cancelDwell() {
   currentDwellTarget = null
   cursorOverlay?.cancelDwell()
+  if (dragActive) endDrag()
 }
 
 function executeClick(target: ClickableElement) {
@@ -254,16 +372,212 @@ function executeClick(target: ClickableElement) {
   debugLog('content', 'dwell:click', { tagName: target.tagName })
   cursorOverlay?.flashClick()
 
+  const point = lastDrawnPoint || target.center
+  dispatchClickSequence(target.element, point.x, point.y)
   const element = target.element as HTMLElement
-  element.click()
-  element.focus()
+  element.focus?.()
+}
+
+function startDrag(target: ClickableElement) {
+  dragActive = true
+  dragTarget = target
+  dragElement = target.element
+  const point = lastDrawnPoint || target.center
+  dispatchDragStart(target.element, point.x, point.y)
+  debugLog('content', 'drag:start', { tagName: target.tagName })
+  if (dragFrame === null) {
+    dragFrame = requestAnimationFrame(dragTick)
+  }
+}
+
+function dragTick() {
+  if (!dragActive || !dragElement) {
+    dragFrame = null
+    return
+  }
+  const point = lastDrawnPoint
+  if (point) dispatchDragMove(point.x, point.y, dragElement)
+  dragFrame = requestAnimationFrame(dragTick)
+}
+
+function endDrag() {
+  if (!dragActive) return
+  dragActive = false
+  if (dragFrame !== null) {
+    cancelAnimationFrame(dragFrame)
+    dragFrame = null
+  }
+  const point = lastDrawnPoint || dragTarget?.center || { x: 0, y: 0 }
+  if (dragElement) dispatchDragEnd(dragElement, point.x, point.y)
+  debugLog('content', 'drag:end')
+  dragTarget = null
+  dragElement = null
+}
+
+function nudgeVector(dir: NudgeDirection): Point {
+  switch (dir) {
+    case 'up':
+      return { x: 0, y: -1 }
+    case 'down':
+      return { x: 0, y: 1 }
+    case 'left':
+      return { x: -1, y: 0 }
+    default:
+      return { x: 1, y: 0 }
+  }
+}
+
+function clampOffset(x: number, y: number): Point {
+  const s = lastSnappedPoint
+  if (!s) return { x, y }
+  return {
+    x: Math.max(2 - s.x, Math.min(window.innerWidth - 2 - s.x, x)),
+    y: Math.max(2 - s.y, Math.min(window.innerHeight - 2 - s.y, y)),
+  }
+}
+
+function startNudge(dir: NudgeDirection) {
+  stopScrollDrive()
+  cancelDwell()
+  nudgeActive = true
+  nudgeDecelerating = false
+  nudgeDir = dir
+  nudgeStart = Date.now()
+  nudgeSpeed = 0
+  debugLog('content', 'nudge:start', { dir })
+  cursorOverlay?.showStatus(`Cursor ${dir}`)
+  if (nudgeFrame === null) {
+    nudgeFrame = requestAnimationFrame(nudgeTick)
+  }
+}
+
+function nudgeTick() {
+  if (!nudgeActive && !nudgeDecelerating) {
+    nudgeFrame = null
+    return
+  }
+
+  if (nudgeActive) {
+    const elapsed = Date.now() - nudgeStart
+    const target = Math.min(elapsed / NUDGE_ACCEL_MS, 1) * NUDGE_MAX_SPEED
+    nudgeSpeed += (target - nudgeSpeed) * 0.3
+  } else {
+    nudgeSpeed *= 0.8
+    if (nudgeSpeed < 0.3) {
+      nudgeSpeed = 0
+      nudgeDecelerating = false
+      nudgeFrame = null
+      cursorOverlay?.hideStatus()
+      renderNudgeCursor()
+      return
+    }
+  }
+
+  const v = nudgeVector(nudgeDir)
+  nudgeOffset = clampOffset(nudgeOffset.x + v.x * nudgeSpeed, nudgeOffset.y + v.y * nudgeSpeed)
+  renderNudgeCursor()
+  nudgeFrame = requestAnimationFrame(nudgeTick)
+}
+
+function stopNudge() {
+  if (!nudgeActive) return
+  nudgeActive = false
+  nudgeDecelerating = true
+  debugLog('content', 'nudge:stop', { dir: nudgeDir })
+  if (nudgeFrame === null) {
+    nudgeFrame = requestAnimationFrame(nudgeTick)
+  }
+}
+
+function resetNudge() {
+  if (nudgeFrame !== null) {
+    cancelAnimationFrame(nudgeFrame)
+    nudgeFrame = null
+  }
+  nudgeActive = false
+  nudgeDecelerating = false
+  nudgeSpeed = 0
+  nudgeOffset = { x: 0, y: 0 }
+  cursorOverlay?.hideStatus()
+}
+
+function pauseNudge() {
+  if (nudgeFrame !== null) {
+    cancelAnimationFrame(nudgeFrame)
+    nudgeFrame = null
+  }
+  nudgeActive = false
+  nudgeDecelerating = false
+  cursorOverlay?.hideStatus()
+}
+
+function startScrollDrive(dir: -1 | 1) {
+  if (config.isCalibrating) return
+  scrollActive = true
+  scrollDir = dir
+  scrollSpeed = SCROLL_MIN_SPEED
+  scrollStart = Date.now()
+  cancelDwell()
+  debugLog('content', 'scroll:start', { dir })
+  cursorOverlay?.showStatus(dir < 0 ? '⇈ Scrolling up' : '⇊ Scrolling down')
+  if (scrollFrame === null) {
+    scrollFrame = requestAnimationFrame(scrollTick)
+  }
+}
+
+function toggleScrollDrive(dir: -1 | 1) {
+  if (scrollActive && scrollDir === dir) {
+    stopScrollDrive()
+    return
+  }
+  startScrollDrive(dir)
+}
+
+function scrollTick() {
+  if (!scrollActive) {
+    scrollFrame = null
+    return
+  }
+  const elapsed = Date.now() - scrollStart
+  const target =
+    SCROLL_MIN_SPEED +
+    Math.min(elapsed / SCROLL_ACCEL_MS, 1) * (SCROLL_MAX_SPEED - SCROLL_MIN_SPEED)
+  scrollSpeed += (target - scrollSpeed) * 0.15
+  window.scrollBy({ top: scrollDir * scrollSpeed, behavior: 'auto' })
+  scrollFrame = requestAnimationFrame(scrollTick)
+}
+
+function stopScrollDrive() {
+  if (!scrollActive) return
+  scrollActive = false
+  if (scrollFrame !== null) {
+    cancelAnimationFrame(scrollFrame)
+    scrollFrame = null
+  }
+  cursorOverlay?.hideStatus()
+  debugLog('content', 'scroll:stop')
+}
+
+function sendTabCommand(dir: TabDirection) {
+  const type = dir < 0 ? 'CMD_PREV_TAB' : 'CMD_NEXT_TAB'
+  chrome.runtime.sendMessage({ type, timestamp: Date.now() }, () => void chrome.runtime.lastError)
+  debugLog('content', 'tab:switch', { dir })
 }
 
 function updateEdgeScroll(mappedPoint: Point, target: ClickableElement | null) {
-  if (!config.edgeScroll || config.isCalibrating || currentDwellTarget || target) {
-    stopEdgeScroll()
+  if (
+    !config.edgeScroll ||
+    config.isCalibrating ||
+    nudgeActive ||
+    nudgeDecelerating ||
+    currentDwellTarget ||
+    target
+  ) {
+    edgeScrollState = null
     return
   }
+
+  if (scrollActive) return
 
   const vh = window.innerHeight
   let dir: -1 | 1 | 0 = 0
@@ -274,47 +588,26 @@ function updateEdgeScroll(mappedPoint: Point, target: ClickableElement | null) {
   }
 
   if (dir === 0) {
-    stopEdgeScroll()
+    edgeScrollState = null
     return
   }
 
-  if (!edgeScrollState) {
+  if (!edgeScrollState || edgeScrollState.dir !== dir) {
     edgeScrollState = { dir, holdingSince: Date.now() }
-  } else if (edgeScrollState.dir !== dir) {
-    edgeScrollState = { dir, holdingSince: Date.now() }
-    stopEdgeScrollLoop()
+    return
   }
 
   if (Date.now() - edgeScrollState.holdingSince >= EDGE_SCROLL_HOLD_MS) {
-    startEdgeScrollLoop(edgeScrollState.dir)
+    startScrollDrive(dir)
   }
-}
-
-function startEdgeScrollLoop(dir: -1 | 1) {
-  if (edgeScrollInterval !== null) return
-  debugLog('content', 'edge-scroll', { dir })
-  edgeScrollInterval = window.setInterval(() => {
-    window.scrollBy({ top: dir * 40, behavior: 'auto' })
-  }, 16)
-}
-
-function stopEdgeScrollLoop() {
-  if (edgeScrollInterval !== null) {
-    window.clearInterval(edgeScrollInterval)
-    edgeScrollInterval = null
-  }
-}
-
-function stopEdgeScroll() {
-  stopEdgeScrollLoop()
-  edgeScrollState = null
 }
 
 function setEnabled(enabled: boolean) {
   trackingEnabled = enabled
   if (!enabled) {
     cancelDwell()
-    stopEdgeScroll()
+    stopScrollDrive()
+    resetNudge()
     cursorOverlay?.hide()
     targetHighlighter?.hide()
     tabDock?.hide()
@@ -332,6 +625,8 @@ function handleRecenter() {
   } else {
     coordinateMapper.recenterDirect(lastRawPoint)
   }
+  nudgeOffset = { x: 0, y: 0 }
+  nudgeSpeed = 0
   debugLog('content', 'recenter', { mode: config.mode, calibrated: !!recentered })
   sendStatusUpdate()
 }

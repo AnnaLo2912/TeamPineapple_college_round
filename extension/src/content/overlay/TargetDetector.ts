@@ -1,5 +1,10 @@
-import type { ClickableElement, Point } from '../../shared/types'
-import { CLICKABLE_SELECTORS, EXCLUDED_TAGS } from '../../shared/constants'
+import type { ClickableElement } from '../../shared/types'
+import {
+  CLICKABLE_SELECTORS,
+  EXCLUDED_TAGS,
+  DWELL_DETECT_RADIUS,
+  DWELL_MIN_HITBOX,
+} from '../../shared/constants'
 
 export class TargetDetector {
   private cachedTargets: ClickableElement[] = []
@@ -82,37 +87,67 @@ export class TargetDetector {
     return targets
   }
 
-  getTargetAtPoint(x: number, y: number, radius: number = 24): ClickableElement | null {
+  private getInflate(target: ClickableElement): number {
+    const minSide = Math.min(target.rect.width, target.rect.height)
+    return Math.max(0, (DWELL_MIN_HITBOX - minSide) / 2)
+  }
+
+  getTargetAtPoint(
+    x: number,
+    y: number,
+    radius: number = DWELL_DETECT_RADIUS
+  ): ClickableElement | null {
     const targets = this.getTargets()
-    let bestTarget: ClickableElement | null = null
-    let bestDistance = Infinity
+    let insideBest: ClickableElement | null = null
+    let insideArea = Infinity
+    let nearBest: ClickableElement | null = null
+    let nearDistance = Infinity
 
     for (const target of targets) {
-      const dx = target.center.x - x
-      const dy = target.center.y - y
-      const dist = Math.hypot(dx, dy)
+      const inflate = this.getInflate(target)
+      const inside =
+        x >= target.rect.left - inflate &&
+        x <= target.rect.right + inflate &&
+        y >= target.rect.top - inflate &&
+        y <= target.rect.bottom + inflate
 
-      if (dist <= radius && dist < bestDistance) {
-        bestDistance = dist
-        bestTarget = target
+      if (inside) {
+        const area = Math.max(target.rect.width * target.rect.height, 1)
+        if (area < insideArea) {
+          insideArea = area
+          insideBest = target
+        }
+        continue
+      }
+
+      const dist = Math.hypot(target.center.x - x, target.center.y - y)
+      if (dist <= radius && dist < nearDistance) {
+        nearDistance = dist
+        nearBest = target
       }
     }
 
-    return bestTarget
+    return insideBest ?? nearBest
   }
 
-  getMagneticTarget(x: number, y: number, magneticRadius: number = 40): ClickableElement | null {
+  getMagneticTarget(x: number, y: number, magneticRadius: number = 64): ClickableElement | null {
     const targets = this.getTargets()
     let bestTarget: ClickableElement | null = null
     let bestDistance = Infinity
 
     for (const target of targets) {
-      const dx = target.center.x - x
-      const dy = target.center.y - y
-      const dist = Math.hypot(dx, dy)
+      const inflate = this.getInflate(target)
+      const inside =
+        x >= target.rect.left - inflate &&
+        x <= target.rect.right + inflate &&
+        y >= target.rect.top - inflate &&
+        y <= target.rect.bottom + inflate
 
-      if (dist <= magneticRadius && dist < bestDistance) {
-        bestDistance = dist
+      const dist = Math.hypot(target.center.x - x, target.center.y - y)
+      const score = inside ? -1 : dist
+
+      if ((inside || dist <= magneticRadius) && score < bestDistance) {
+        bestDistance = score
         bestTarget = target
       }
     }
@@ -130,10 +165,20 @@ export class TargetDetector {
 
     if (dist === 0) return { x: cursorX, y: cursorY }
 
-    const factor = snapStrength * (1 - dist / magneticRadius)
+    const inflate = this.getInflate(target)
+    const inside =
+      cursorX >= target.rect.left - inflate &&
+      cursorX <= target.rect.right + inflate &&
+      cursorY >= target.rect.top - inflate &&
+      cursorY <= target.rect.bottom + inflate
+
+    const factor = inside
+      ? snapStrength
+      : snapStrength * (1 - dist / magneticRadius)
+
     return {
-      x: cursorX + dx * factor,
-      y: cursorY + dy * factor,
+      x: cursorX + dx * Math.max(0, Math.min(factor, 1)),
+      y: cursorY + dy * Math.max(0, Math.min(factor, 1)),
     }
   }
 

@@ -27,14 +27,22 @@ export const CURSOR_SIZE = 24
 export const DWELL_RING_SIZE = 40
 export const TARGET_SIZE = 32
 export const PULSE_DURATION = 1500
-export const MAGNETIC_RADIUS = 40
-export const SNAP_STRENGTH = 0.3
+export const MAGNETIC_RADIUS = 64
+export const SNAP_STRENGTH = 0.75
 export const DWELL_TIME = 800
 export const CLICK_COOLDOWN = 1200
 
 export const DWELL_DETECT_RADIUS = 24
 export const DWELL_EDGE_MARGIN = 24
+export const DWELL_MIN_HITBOX = 32
 export const EDGE_SCROLL_HOLD_MS = 700
+
+export const NUDGE_ACCEL_MS = 300
+export const NUDGE_MAX_SPEED = 12
+
+export const SCROLL_ACCEL_MS = 250
+export const SCROLL_MIN_SPEED = 1.2
+export const SCROLL_MAX_SPEED = 4.5
 
 export const STORAGE_KEYS = {
   CONFIG: 'handsfree_config',

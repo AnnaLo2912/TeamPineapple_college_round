@@ -2,7 +2,7 @@
 Add-Type -AssemblyName System.Speech
 
 try {
-    # Dynamically select installed recognizer (e.g. en-US) to match system recognizer packages
+    # Dynamically select installed recognizer (e.g. en-US)
     $rec = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Select-Object -First 1
     if ($rec -ne $null) {
         $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($rec.Culture)
@@ -37,6 +37,7 @@ try {
         'what is on my screen',
         'read screen',
         'active window',
+        'desktop',
         'list windows',
         'open windows',
         'minimize window',
@@ -61,22 +62,17 @@ try {
         $gb.Culture = $rec.Culture
     }
 
+    # IMPORTANT: ONLY load the constrained CommandGrammar!
+    # DO NOT load DictationGrammar so the engine is strictly forced to snap to our commands.
     $commandGrammar = New-Object System.Speech.Recognition.Grammar($gb)
     $commandGrammar.Name = "SystemCommands"
     $engine.LoadGrammar($commandGrammar)
-
-    # Free-form dictation fallback
-    try {
-        $dictationGrammar = New-Object System.Speech.Recognition.DictationGrammar
-        $dictationGrammar.Name = "Dictation"
-        $engine.LoadGrammar($dictationGrammar)
-    } catch {}
 
     Write-Output "LISTENER_READY"
     [Console]::Out.Flush()
 
     while ($true) {
-        # Perform recognition on default laptop microphone input
+        # Perform constrained recognition on default laptop microphone
         $result = $engine.Recognize()
         if ($result -ne $null -and $result.Text -ne $null) {
             $recognizedText = $result.Text.Trim()

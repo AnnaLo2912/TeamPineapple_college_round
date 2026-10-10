@@ -13,21 +13,39 @@ export async function executeCommand(rawCommand) {
   console.log(`[Tier 1 System Action] Executing: "${cmd}"`)
 
   // 1. App Launchers
-  if (cmd.includes('file explorer') || cmd.includes('open files') || cmd === 'files') {
+  if (
+    cmd.includes('file explorer') ||
+    cmd.includes('open files') ||
+    cmd.includes('explorer') ||
+    cmd.includes('extort') ||
+    cmd.includes('taco liar') ||
+    cmd === 'files'
+  ) {
     playEarcon('success')
     speak('Opening File Explorer')
     exec('explorer.exe')
     return true
   }
 
-  if (cmd.includes('google') || cmd.includes('open browser') || cmd === 'browser') {
+  if (
+    cmd.includes('google') ||
+    cmd.includes('open browser') ||
+    cmd.includes('browser') ||
+    cmd.includes('goggle') ||
+    cmd === 'internet'
+  ) {
     playEarcon('success')
     speak('Opening Google Search in browser')
     exec('start https://www.google.com')
     return true
   }
 
-  if (cmd.includes('notepad') || cmd.includes('text editor')) {
+  if (
+    cmd.includes('notepad') ||
+    cmd.includes('text editor') ||
+    cmd.includes('textile') ||
+    cmd === 'notes'
+  ) {
     playEarcon('success')
     speak('Opening Notepad')
     exec('notepad.exe')

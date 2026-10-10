@@ -30,7 +30,11 @@ export async function processVoiceInput(input) {
     lower.includes("what's on screen") ||
     lower.includes('read screen') ||
     lower.includes('active window') ||
-    lower.includes('where am i')
+    lower.includes('desktop') ||
+    lower.includes('index topped') ||
+    lower.includes('next stop') ||
+    lower.includes('where am i') ||
+    lower === 'screen'
   ) {
     await announceActiveWindow()
     return

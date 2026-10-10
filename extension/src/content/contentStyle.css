@@ -7,11 +7,11 @@
 }
 
 @keyframes handsfree-pulse {
-  0%, 100% { 
-    box-shadow: 0 0 0 2px #4ecdc4, 0 0 12px 4px rgba(78, 205, 196, 0.4); 
+  0%, 100% {
+    box-shadow: 0 0 0 2px #4ecdc4, 0 0 12px 4px rgba(78, 205, 196, 0.4);
   }
-  50% { 
-    box-shadow: 0 0 0 3px #4ecdc4, 0 0 20px 6px rgba(78, 205, 196, 0.6); 
+  50% {
+    box-shadow: 0 0 0 3px #4ecdc4, 0 0 20px 6px rgba(78, 205, 196, 0.6);
   }
 }
 
@@ -24,21 +24,23 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.handsfree-disabled-badge {
-  animation: handsfree-fade-in 0.2s ease-out;
-}
-
-@keyframes handsfree-fade-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 .handsfree-calibration-overlay {
   animation: handsfree-fade-in 0.2s ease-out;
 }
 
-*::selection {
-  background: rgba(78, 205, 196, 0.3);
+@keyframes handsfree-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .handsfree-cursor,
+  .handsfree-highlight,
+  .handsfree-webcam-preview,
+  .handsfree-calibration-overlay {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 .handsfree-cursor svg {
@@ -47,15 +49,4 @@
 
 .handsfree-cursor circle {
   vector-effect: non-scaling-stroke;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .handsfree-cursor,
-  .handsfree-highlight,
-  .handsfree-webcam-preview,
-  .handsfree-disabled-badge,
-  .handsfree-calibration-overlay {
-    animation: none !important;
-    transition: none !important;
-  }
 }

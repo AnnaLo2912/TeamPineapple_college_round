@@ -1,14 +1,11 @@
-import type { CalibrationData, CalibrationPoint, Point, TrackingMode } from '../tracking/types'
+import type { CalibrationData, CalibrationPoint, Point, TrackingMode } from '../../shared/types'
+import { CALIBRATION_POINTS } from '../../shared/constants'
 
-const CALIBRATION_POINTS: Point[] = [
-  { x: 0.1, y: 0.1 },
-  { x: 0.9, y: 0.1 },
-  { x: 0.9, y: 0.9 },
-  { x: 0.1, y: 0.9 },
-  { x: 0.5, y: 0.5 },
-]
-
-const STORAGE_KEY = 'handsfree_calibration'
+const STORAGE_KEYS = {
+  CONFIG: 'handsfree_config',
+  CALIBRATION_FACE: 'handsfree_calibration_face',
+  CALIBRATION_HAND: 'handsfree_calibration_hand',
+}
 
 export class CalibrationManager {
   private calibrationData: Map<TrackingMode, CalibrationData> = new Map()
@@ -23,19 +20,30 @@ export class CalibrationManager {
     this.loadFromStorage()
   }
 
-  private loadFromStorage() {
+  private async loadFromStorage() {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        Object.entries(parsed).forEach(([mode, data]: [string, any]) => {
-          this.calibrationData.set(mode as TrackingMode, {
-            ...data,
-            points: data.points.map((p: any) => ({
-              screen: p.screen,
-              camera: p.camera,
-            })),
-          })
+      const faceCal = await chrome.storage.sync.get('handsfree_calibration_face')
+      const handCal = await chrome.storage.sync.get('handsfree_calibration_hand')
+
+      if (faceCal.handsfree_calibration_face) {
+        const parsed = faceCal.handsfree_calibration_face
+        this.calibrationData.set('face', {
+          ...parsed,
+          points: parsed.points.map((p: any) => ({
+            screen: p.screen,
+            camera: p.camera,
+          })),
+        })
+      }
+
+      if (handCal.handsfree_calibration_hand) {
+        const parsed = handCal.handsfree_calibration_hand
+        this.calibrationData.set('hand', {
+          ...parsed,
+          points: parsed.points.map((p: any) => ({
+            screen: p.screen,
+            camera: p.camera,
+          })),
         })
       }
     } catch (e) {
@@ -43,13 +51,17 @@ export class CalibrationManager {
     }
   }
 
-  private saveToStorage() {
+  private async saveToStorage() {
     try {
-      const obj: Record<string, any> = {}
-      this.calibrationData.forEach((data, mode) => {
-        obj[mode] = data
-      })
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(obj))
+      const faceCal = this.calibrationData.get('face')
+      const handCal = this.calibrationData.get('hand')
+
+      if (faceCal) {
+        await chrome.storage.sync.set({ handsfree_calibration_face: faceCal })
+      }
+      if (handCal) {
+        await chrome.storage.sync.set({ handsfree_calibration_hand: handCal })
+      }
     } catch (e) {
       console.warn('Failed to save calibration:', e)
     }
@@ -107,7 +119,7 @@ export class CalibrationManager {
 
   private finishCalibration() {
     const matrix = this.computeMatrix(this.collectedPoints)
-    
+
     const data: CalibrationData = {
       points: this.collectedPoints,
       matrix,
@@ -259,6 +271,14 @@ export class CalibrationManager {
   getCurrentProgress(): { current: number; total: number } | null {
     if (!this.isCalibrating) return null
     return { current: this.currentPointIndex, total: CALIBRATION_POINTS.length }
+  }
+
+  isCalibratingMode(): boolean {
+    return this.isCalibrating
+  }
+
+  getCurrentMode(): TrackingMode {
+    return this.currentMode
   }
 }
 

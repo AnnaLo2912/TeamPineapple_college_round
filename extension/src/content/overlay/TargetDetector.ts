@@ -1,30 +1,5 @@
-export interface ClickableElement {
-  element: HTMLElement
-  rect: DOMRect
-  center: { x: number; y: number }
-  tagName: string
-  type?: string
-  isInput: boolean
-  isLink: boolean
-  isButton: boolean
-}
-
-const CLICKABLE_SELECTORS = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([type="hidden"]):not([disabled])',
-  'textarea:not([disabled])',
-  'select:not([disabled])',
-  '[role="button"]:not([disabled])',
-  '[role="link"]',
-  '[role="menuitem"]',
-  '[role="tab"]',
-  '[onclick]',
-  '[data-clickable]',
-  'summary',
-]
-
-const EXCLUDED_TAGS = ['SCRIPT', 'STYLE', 'META', 'LINK', 'NOSCRIPT']
+import type { ClickableElement, Point } from '../../shared/types'
+import { CLICKABLE_SELECTORS, EXCLUDED_TAGS } from '../../shared/constants'
 
 export class TargetDetector {
   private cachedTargets: ClickableElement[] = []
@@ -61,7 +36,7 @@ export class TargetDetector {
 
     this.cachedTargets = this.scanTargets()
     this.lastCacheTime = now
-    
+
     if (this.onTargetsChangeCallback) {
       this.onTargetsChangeCallback(this.cachedTargets)
     }

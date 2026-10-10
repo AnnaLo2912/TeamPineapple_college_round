@@ -16,14 +16,18 @@ export default defineConfig({
     minify: 'terser',
     rollupOptions: {
       input: {
-        content: 'src/content/contentScript.tsx',
         popup: 'src/popup/popup.html',
+        offscreen: 'src/offscreen/offscreen.html',
+        permission: 'src/offscreen/permission.html',
         background: 'src/background/serviceWorker.ts',
       },
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: '[name].js',
-        assetFileNames: '[name].[ext]',
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name === 'popup.css') return 'popup.css'
+          return '[name].[ext]'
+        },
       },
     },
   },

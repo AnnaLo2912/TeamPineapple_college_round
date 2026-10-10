@@ -27,7 +27,6 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "css": ["contentStyle.css"],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -35,17 +34,14 @@
   "permissions": [
     "activeTab",
     "storage",
-    "scripting"
+    "offscreen"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
-  "web_accessible_resources": [
-    {
-      "resources": ["models/*"],
-      "matches": ["<all_urls>"]
-    }
-  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "commands": {
     "toggle-tracking": {
       "suggested_key": {

@@ -168,28 +168,30 @@ body {
 /* Mode Switcher */
 .mode-switcher {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   background: rgba(255, 255, 255, 0.05);
   padding: 3px;
   border-radius: 10px;
   border: 1px solid var(--bg-card-border);
+  gap: 2px;
 }
 
 .mode-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 4px;
+  padding: 6px 4px;
   border: none;
   border-radius: 7px;
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-heading);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .mode-btn:hover {
@@ -639,4 +641,160 @@ body {
 
 .full-width-btn {
   width: 100%;
+}
+
+/* Eyes-Free Blind Navigation Card */
+.blind-mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.6) 0%, rgba(15, 23, 42, 0.7) 100%);
+  border: 1px solid rgba(129, 140, 248, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transition: all 0.3s ease;
+}
+
+.blind-mode-card.active {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.35) 100%);
+  border-color: rgba(52, 211, 153, 0.5);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.25);
+}
+
+.blind-mode-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.blind-mode-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #c7d2fe;
+}
+
+.blind-mode-card.active .blind-mode-title {
+  color: #a7f3d0;
+}
+
+.blind-mode-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #818cf8;
+  transition: all 0.3s ease;
+}
+
+.blind-mode-card.active .blind-mode-icon {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: rgba(52, 211, 153, 0.45);
+  color: #34d399;
+}
+
+.blind-mode-labels {
+  display: flex;
+  flex-direction: column;
+}
+
+.blind-mode-labels strong {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.blind-mode-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* Switch toggle */
+.switch-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.switch-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-toggle .slider {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 24px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.switch-toggle .slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: #cbd5e1;
+  border-radius: 50%;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.switch-toggle input:checked + .slider {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-color: #34d399;
+}
+
+.switch-toggle input:checked + .slider:before {
+  transform: translateX(20px);
+  background-color: #ffffff;
+}
+
+.blind-mode-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.blind-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.blind-mode-card.active .blind-badge {
+  background: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.blind-badge-shortcut {
+  margin-left: auto;
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }

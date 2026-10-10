@@ -876,6 +876,501 @@
     };
   }
 
+  // =========================================================================
+  // Eyes-Free Blind & Visually Impaired Navigation Engine
+  // =========================================================================
+
+  let isBlindModeActive = false;
+  let blindModeAudioCtx = null;
+  let currentSearchResults = [];
+  let eyesFreeSearchInput = null;
+  let lastDictatedElement = null;
+
+  function getBlindAudioContext() {
+    try {
+      if (!blindModeAudioCtx || blindModeAudioCtx.state === 'closed') {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) blindModeAudioCtx = new AudioCtx();
+      }
+      if (blindModeAudioCtx && blindModeAudioCtx.state === 'suspended') {
+        blindModeAudioCtx.resume().catch(() => {});
+      }
+      return blindModeAudioCtx;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // --- Earcon Audio Synthesizer (Web Audio API) ---
+
+  function playEarconActivate() {
+    const ctx = getBlindAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [523.25, 659.25, 783.99].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+      gain.gain.setValueAtTime(0, now + idx * 0.08);
+      gain.gain.linearRampToValueAtTime(0.18, now + idx * 0.08 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.08);
+      osc.stop(now + idx * 0.08 + 0.25);
+    });
+  }
+
+  function playEarconFocus() {
+    const ctx = getBlindAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(440, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.09);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }
+
+  function playEarconDictationStart() {
+    const ctx = getBlindAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [523.25, 659.25].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + i * 0.07);
+      gain.gain.setValueAtTime(0.12, now + i * 0.07);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.16);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.07);
+      osc.stop(now + i * 0.07 + 0.18);
+    });
+  }
+
+  function playEarconDictationEnd() {
+    const ctx = getBlindAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [659.25, 523.25].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + i * 0.07);
+      gain.gain.setValueAtTime(0.12, now + i * 0.07);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.16);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.07);
+      osc.stop(now + i * 0.07 + 0.18);
+    });
+  }
+
+  function playEarconClick() {
+    const ctx = getBlindAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1200, now);
+    osc.frequency.exponentialRampToValueAtTime(300, now + 0.04);
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.05);
+  }
+
+  function playEarconError() {
+    const ctx = getBlindAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [220, 180].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now + i * 0.1);
+      gain.gain.setValueAtTime(0.12, now + i * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.1);
+      osc.stop(now + i * 0.1 + 0.14);
+    });
+  }
+
+  function playEarconResultPing() {
+    const ctx = getBlindAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(783.99, now); // G5
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }
+
+  // --- Screen Dictator Speech Synthesizer ---
+
+  let screenDictatorDebounceTimer = null;
+  let lastSpokenScreenText = '';
+
+  function speakScreenText(text, interrupt = true) {
+    return new Promise((resolve) => {
+      if (!window.speechSynthesis || !text || text.trim().length === 0) {
+        resolve();
+        return;
+      }
+      if (interrupt) {
+        window.speechSynthesis.cancel();
+      }
+      const utterance = new SpeechSynthesisUtterance(text.trim());
+      utterance.rate = 1.05;
+      utterance.pitch = 1.0;
+      utterance.lang = 'en-US';
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+      window.speechSynthesis.speak(utterance);
+    });
+  }
+
+  function getElementScreenDescription(el) {
+    if (!el || !(el instanceof HTMLElement)) return '';
+    const tag = el.tagName.toLowerCase();
+    const role = el.getAttribute('role') || '';
+    const type = (el.getAttribute('type') || '').toLowerCase();
+
+    let name = (
+      el.getAttribute('aria-label') ||
+      el.getAttribute('title') ||
+      el.getAttribute('placeholder') ||
+      el.getAttribute('alt') ||
+      ''
+    ).trim();
+
+    if (!name && el.getAttribute('aria-labelledby')) {
+      const lbl = document.getElementById(el.getAttribute('aria-labelledby'));
+      if (lbl) name = (lbl.innerText || lbl.textContent || '').trim();
+    }
+    if (!name) {
+      if (el.id) {
+        const lbl = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+        if (lbl) name = (lbl.innerText || lbl.textContent || '').trim();
+      }
+      const parentLbl = el.closest('label');
+      if (parentLbl) name = (parentLbl.innerText || parentLbl.textContent || '').trim();
+    }
+    if (!name) {
+      name = (el.innerText || el.textContent || '').trim();
+    }
+    name = name.replace(/\s+/g, ' ').slice(0, 100);
+
+    let roleText = '';
+    if (role === 'searchbox' || tag === 'textarea' && el.name === 'q' || tag === 'input' && (type === 'search' || el.name === 'q')) {
+      roleText = 'Search box';
+    } else if (role === 'button' || tag === 'button' || tag === 'input' && (type === 'submit' || type === 'button')) {
+      roleText = 'Button';
+    } else if (tag === 'a' || role === 'link') {
+      roleText = 'Link';
+    } else if (tag.startsWith('h') && tag.length === 2 || role === 'heading') {
+      roleText = 'Heading';
+    } else if (tag === 'input' && type === 'checkbox' || role === 'checkbox') {
+      const chk = el.checked || el.getAttribute('aria-checked') === 'true';
+      roleText = `Checkbox, ${chk ? 'checked' : 'not checked'}`;
+    } else if (tag === 'input' && type === 'radio' || role === 'radio') {
+      const chk = el.checked || el.getAttribute('aria-checked') === 'true';
+      roleText = `Radio button, ${chk ? 'selected' : 'not selected'}`;
+    } else if (tag === 'input' || tag === 'textarea') {
+      roleText = type === 'password' ? 'Password field' : 'Text input';
+    }
+
+    let valText = '';
+    if (tag === 'input' || tag === 'textarea') {
+      const v = el.value || '';
+      if (v && type !== 'password') valText = `, value: ${v.slice(0, 50)}`;
+    }
+
+    if (name && roleText) return `${roleText}: ${name}${valText}`;
+    if (name) return `${name}${valText}`;
+    if (roleText) return roleText;
+    return '';
+  }
+
+  function dictateElement(el) {
+    if (!el || el === lastDictatedElement) return;
+    if (screenDictatorDebounceTimer) clearTimeout(screenDictatorDebounceTimer);
+
+    screenDictatorDebounceTimer = setTimeout(() => {
+      lastDictatedElement = el;
+      const desc = getElementScreenDescription(el);
+      if (desc && desc !== lastSpokenScreenText) {
+        lastSpokenScreenText = desc;
+        speakScreenText(desc, true);
+      }
+    }, 180);
+  }
+
+  // --- Eyes-Free Search Bar Snapping & Glide ---
+
+  function findPrimarySearchInput() {
+    const selectors = [
+      'textarea[name="q"]',
+      'input[name="q"]',
+      '[role="searchbox"]',
+      'input[type="search"]',
+      'input[title*="Search" i]',
+      'input[aria-label*="Search" i]',
+      'textarea[aria-label*="Search" i]',
+      'input[placeholder*="Search" i]',
+      'input#search'
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el && el.offsetParent !== null && !el.disabled) {
+        return el;
+      }
+    }
+    return null;
+  }
+
+  function glideToSearchInput() {
+    const input = findPrimarySearchInput();
+    if (!input) {
+      playEarconError();
+      speakScreenText('Search bar not found on this page.');
+      return { success: false, error: 'Search input not found' };
+    }
+
+    eyesFreeSearchInput = input;
+    lastFocusedElement = input;
+
+    // Smooth animated glide into center
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    input.focus();
+
+    // High-contrast glowing accessibility indicator
+    const origOutline = input.style.outline;
+    const origBoxShadow = input.style.boxShadow;
+    const origTransition = input.style.transition;
+    input.style.transition = 'all 0.3s ease';
+    input.style.outline = '4px solid #6366f1';
+    input.style.boxShadow = '0 0 24px rgba(99, 102, 241, 0.7)';
+
+    setTimeout(() => {
+      input.style.outline = origOutline;
+      input.style.boxShadow = origBoxShadow;
+      input.style.transition = origTransition;
+    }, 3500);
+
+    playEarconFocus();
+    speakScreenText('Search bar ready. Speak your query, then say Done.');
+    return { success: true, message: 'Glided to search input and focused' };
+  }
+
+  function finishQuery() {
+    const input = eyesFreeSearchInput || lastFocusedElement || findPrimarySearchInput();
+    const query = input ? (input.value || '').trim() : '';
+
+    playEarconDictationEnd();
+    if (query) {
+      speakScreenText(`Query entered: ${query}. Say Search to execute.`);
+      return { success: true, query };
+    } else {
+      speakScreenText('Search input is empty. Speak your search term first.');
+      return { success: false, error: 'Empty query' };
+    }
+  }
+
+  function executeSearchQuery() {
+    const input = eyesFreeSearchInput || lastFocusedElement || findPrimarySearchInput();
+    const query = input ? (input.value || '').trim() : '';
+
+    playEarconClick();
+    if (query) {
+      speakScreenText(`Searching for: ${query}...`);
+    } else {
+      speakScreenText('Executing search...');
+    }
+
+    if (input) {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, code: 'Enter', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', keyCode: 13, which: 13, code: 'Enter', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, which: 13, code: 'Enter', bubbles: true }));
+
+      const form = input.closest('form');
+      if (form) {
+        const submitBtn = form.querySelector('button[type="submit"], input[type="submit"], [aria-label*="Search" i]');
+        if (submitBtn) {
+          submitBtn.click();
+        } else {
+          form.submit();
+        }
+      }
+    }
+    return { success: true, query };
+  }
+
+  // --- Search Results Sequential Reader ---
+
+  function extractSearchResults() {
+    currentSearchResults = [];
+    const selectors = [
+      '#search h3',
+      '#rso h3',
+      'div.g h3',
+      '[data-sokoban-container] h3',
+      '.yuRUbf h3',
+      'main a h3',
+      'main h3 a',
+      'article h3',
+      '.result__title'
+    ];
+
+    const rawHeadings = Array.from(document.querySelectorAll(selectors.join(', ')));
+    const seenUrls = new Set();
+
+    rawHeadings.forEach((h3) => {
+      const text = (h3.innerText || h3.textContent || '').trim().replace(/\s+/g, ' ');
+      if (!text || text.length < 3) return;
+
+      const anchor = h3.closest('a') || h3.querySelector('a') || h3.parentElement?.closest('a');
+      if (!anchor || !anchor.href) return;
+
+      const url = anchor.href;
+      if (url.startsWith('javascript:') || url.includes('google.com/search') || seenUrls.has(url)) return;
+
+      seenUrls.add(url);
+      currentSearchResults.push({
+        number: currentSearchResults.length + 1,
+        title: text,
+        url: url,
+        element: anchor
+      });
+    });
+
+    return currentSearchResults.slice(0, 8); // Top 8 clean results
+  }
+
+  function readSearchResults() {
+    const results = extractSearchResults();
+    if (results.length === 0) {
+      playEarconError();
+      speakScreenText('No search results found on this page. Say Go to search for a new query.');
+      return { success: false, error: 'No search results found' };
+    }
+
+    playEarconResultPing();
+    const resultSummaries = results.map(r => `Result ${r.number}: ${r.title}`).join('. ');
+    const announcement = `Found ${results.length} results. ${resultSummaries}. Say "Click link" followed by a number to open.`;
+    speakScreenText(announcement);
+    return { success: true, count: results.length, results: results.map(r => ({ number: r.number, title: r.title, url: r.url })) };
+  }
+
+  function clickSearchResult(num) {
+    const targetNum = parseInt(num, 10);
+    if (isNaN(targetNum)) return { success: false, error: 'Invalid result number.' };
+
+    if (currentSearchResults.length === 0) {
+      extractSearchResults();
+    }
+
+    const item = currentSearchResults.find(r => r.number === targetNum);
+    if (!item || !item.element) {
+      playEarconError();
+      speakScreenText(`Result ${targetNum} not found. Say Read results to hear available items.`);
+      return { success: false, error: `Result ${targetNum} not found.` };
+    }
+
+    playEarconClick();
+    speakScreenText(`Opening Result ${targetNum}: ${item.title}`);
+    flashHighlight(item.element);
+
+    setTimeout(() => {
+      if (item.element) item.element.click();
+      else window.location.href = item.url;
+    }, 400);
+
+    return { success: true, number: targetNum, title: item.title, url: item.url };
+  }
+
+  // --- Eyes-Free Blind Mode Activation & Persistence ---
+
+  function setBlindMode(enabled) {
+    isBlindModeActive = !!enabled;
+    chrome.storage.local.set({ blindModeEnabled: isBlindModeActive });
+
+    if (isBlindModeActive) {
+      playEarconActivate();
+      speakScreenText('Eyes-Free Blind Navigation enabled.');
+
+      const isGoogle = /google\.[a-z.]+/i.test(window.location.hostname);
+      const isSearch = window.location.pathname.includes('/search');
+
+      if (isGoogle && !isSearch) {
+        setTimeout(() => glideToSearchInput(), 800);
+      } else if (isGoogle && isSearch) {
+        setTimeout(() => {
+          speakScreenText('Google results loaded. Say Read results to listen to headlines, or Go to search to search again.');
+        }, 800);
+      }
+    } else {
+      speakScreenText('Eyes-Free Blind Navigation disabled.');
+    }
+    return { success: true, isBlindMode: isBlindModeActive };
+  }
+
+  // Auto-Activation Check on Page Load
+  chrome.storage.local.get(['blindModeEnabled'], (result) => {
+    if (result && result.blindModeEnabled) {
+      isBlindModeActive = true;
+      const host = window.location.hostname.toLowerCase();
+      const isGoogle = host.includes('google.');
+      const isSearch = window.location.pathname.includes('/search');
+
+      setTimeout(() => {
+        playEarconActivate();
+        if (isGoogle && !isSearch) {
+          glideToSearchInput();
+        } else if (isGoogle && isSearch) {
+          speakScreenText('Google results loaded. Say Read results to listen to headlines, or Go to search to search again.');
+        } else {
+          speakScreenText('Eyes-Free navigation active on page. Speak your commands.');
+        }
+      }, 700);
+    }
+  });
+
+  // Eyes-Free Global Focus Dictator
+  document.addEventListener('focusin', (e) => {
+    if (isBlindModeActive && e.target && e.target instanceof HTMLElement) {
+      dictateElement(e.target);
+    }
+  }, true);
+
+  // Eyes-Free Keyboard Shortcut: Alt+B
+  document.addEventListener('keydown', (e) => {
+    if (e.altKey && (e.code === 'KeyB' || e.key === 'b' || e.key === 'B')) {
+      e.preventDefault();
+      setBlindMode(!isBlindModeActive);
+    }
+  });
+
   /**
    * Chrome Extension Message Listener
    */
@@ -955,6 +1450,34 @@
 
       case 'GET_NUMBERED_LINKS_STATUS':
         sendResponse({ success: true, isVisible: isHintsVisible, count: activeHints.length });
+        break;
+
+      case 'SET_BLIND_MODE':
+        sendResponse(setBlindMode(request.enabled));
+        break;
+
+      case 'GET_BLIND_MODE_STATUS':
+        sendResponse({ success: true, isBlindMode: isBlindModeActive });
+        break;
+
+      case 'GO_TO_SEARCH':
+        sendResponse(glideToSearchInput());
+        break;
+
+      case 'FINISH_QUERY':
+        sendResponse(finishQuery());
+        break;
+
+      case 'EXECUTE_SEARCH':
+        sendResponse(executeSearchQuery());
+        break;
+
+      case 'READ_SEARCH_RESULTS':
+        sendResponse(readSearchResults());
+        break;
+
+      case 'CLICK_SEARCH_RESULT':
+        sendResponse(clickSearchResult(request.number));
         break;
 
       default:

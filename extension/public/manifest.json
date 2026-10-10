@@ -27,7 +27,7 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "css": ["contentStyle.css"],
+      "css": ["content.css"],
       "run_at": "document_idle",
       "all_frames": false
     }

@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
 import { TrackingManager } from '@/tracking/trackingManager'
-import { CoordinateMapper } from '@/tracking/coordinateMapper'
 import { CursorOverlay, TargetHighlight } from '@/interaction/CursorOverlay'
 import { CalibrationOverlay } from '@/calibration/CalibrationOverlay'
 import { calibrationManager } from '@/calibration/calibrationManager'
-import { loadConfig, saveConfig } from '@/utils/storage'
-import { DEFAULT_CONFIG, type TrackerConfig, type TrackingResult, type Point, type ClickableElement } from '@/tracking/types'
-import { targetDetector } from '@/interaction/targetDetector'
+import { loadConfig } from '@/utils/storage'
+import { DEFAULT_CONFIG, type TrackerConfig, type TrackingResult, type Point } from '@/tracking/types'
+import { targetDetector, type ClickableElement } from '@/interaction/targetDetector'
 import './contentStyle.css'
 
 interface OverlayState {
@@ -33,6 +32,7 @@ let trackingManager: TrackingManager | null = null
 let config: TrackerConfig = DEFAULT_CONFIG
 let lastClickTime = 0
 let dwellTimeout: ReturnType<typeof setTimeout> | null = null
+let dwellStartTime = 0
 let currentDwellTarget: ClickableElement | null = null
 
 function App() {
@@ -68,7 +68,7 @@ function App() {
         }
 
         if (currentDwellTarget && dwellTimeout) {
-          const elapsed = Date.now() - (dwellTimeout as any).startTime
+          const elapsed = Date.now() - dwellStartTime
           newDwellProgress = Math.min(elapsed / DWELL_TIME, 1)
           newIsDwelling = true
         }
@@ -89,13 +89,14 @@ function App() {
 
   const startDwell = (target: ClickableElement) => {
     currentDwellTarget = target
+    dwellStartTime = Date.now()
     dwellTimeout = setTimeout(() => {
       executeClick(target)
       currentDwellTarget = null
       dwellTimeout = null
+      dwellStartTime = 0
       setState(prev => ({ ...prev, isDwelling: false, dwellProgress: 0 }))
     }, DWELL_TIME)
-    ;(dwellTimeout as any).startTime = Date.now()
   }
 
   const cancelDwell = () => {
@@ -103,6 +104,7 @@ function App() {
       clearTimeout(dwellTimeout)
       dwellTimeout = null
     }
+    dwellStartTime = 0
     currentDwellTarget = null
   }
 
@@ -123,15 +125,6 @@ function App() {
     target.element.focus()
   }
 
-  const handleCalibrationPoint = useCallback((cameraPoint: Point) => {
-    const result = calibrationManager.addCalibrationPoint(cameraPoint)
-    if (result.done) {
-      setState(prev => ({ ...prev, isCalibrating: false, calibrationMode: null }))
-      if (trackingManager) {
-        trackingManager.getCoordinateMapper().setCalibration(calibrationManager.getCalibration(config.mode)!)
-      }
-    }
-  }, [])
 
   const startCalibration = useCallback((mode: 'face' | 'hand') => {
     setState(prev => ({ ...prev, isCalibrating: true, calibrationMode: mode }))
@@ -198,6 +191,36 @@ function App() {
       targetDetector.destroy()
     }
   }, [handleTrackingUpdate])
+
+  useEffect(() => {
+    const handleMessage = (
+      message: { type: string; mode?: 'face' | 'hand'; enabled?: boolean },
+      _sender: chrome.runtime.MessageSender,
+      sendResponse: (response?: { enabled: boolean; mode: 'face' | 'hand' }) => void
+    ) => {
+      if (message.type === 'TOGGLE_TRACKING') {
+        handleTrackingToggle()
+      } else if (message.type === 'RECENTER') {
+        handleRecenter()
+      } else if (message.type === 'START_CALIBRATION') {
+        if (message.mode) {
+          startCalibration(message.mode)
+        }
+      } else if (message.type === 'SET_MODE') {
+        if (message.mode) {
+          handleModeChange(message.mode)
+        }
+      } else if (message.type === 'GET_STATUS') {
+        sendResponse({ enabled: state.isEnabled, mode: state.mode })
+      }
+      return true
+    }
+
+    chrome.runtime.onMessage.addListener(handleMessage)
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage)
+    }
+  }, [handleTrackingToggle, handleRecenter, startCalibration, handleModeChange, state.isEnabled, state.mode])
 
   if (!state.isEnabled) {
     return (
@@ -294,7 +317,7 @@ const WebcamPreview: React.FC<{
         ctx.lineWidth = 1
         ctx.fillStyle = mode === 'face' ? '#4ecdc4' : '#ffe66d'
         
-        landmarks.forEach((p, i) => {
+        landmarks.forEach((p) => {
           const x = width - p.x * width
           const y = p.y * height
           ctx.beginPath()
@@ -354,37 +377,4 @@ if (document.readyState === 'loading') {
 } else {
   mountOverlay()
 }
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'TOGGLE_TRACKING') {
-    if (root) {
-      root.unmount()
-      root = null
-      setTimeout(mountOverlay, 100)
-    }
-  }
-  if (message.type === 'RECENTER') {
-    // Handled via state in App
-  }
-  if (message.type === 'START_CALIBRATION') {
-    // Handled via state in App
-  }
-  if (message.type === 'SET_MODE') {
-    // Handled via state in App
-  }
-  if (message.type === 'GET_STATUS') {
-    sendResponse({ enabled: true, mode: config.mode })
-  }
-  return true
-})
-
-chrome.commands.onCommand.addListener((command) => {
-  if (command === 'toggle-tracking') {
-    chrome.runtime.sendMessage({ type: 'TOGGLE_TRACKING' })
-  }
-  if (command === 'recenter') {
-    chrome.runtime.sendMessage({ type: 'RECENTER' })
-  }
-})
-
 export {}

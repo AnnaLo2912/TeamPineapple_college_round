@@ -1,0 +1,76 @@
+# Dependencies
+node_modules/
+**/node_modules/
+.venv/
+venv/
+env/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.example.*
+**/.env
+**/.env.*
+!**/.env.example
+
+# Build output
+dist/
+build/
+coverage/
+.next/
+out/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+*.egg-info/
+wheels/
+
+# Editors and operating systems
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local databases and temporary files
+*.sqlite
+*.sqlite3
+*.db
+tmp/
+temp/
+
+# ML model weights and datasets
+models/
+checkpoints/
+datasets/
+*.pt
+*.pth
+*.onnx
+*.h5
+*.keras
+
+# Generated reports
+reports/generated/
+*.coverage
+
+# Local secrets and certificates
+*.pem
+*.key
+*.crt

@@ -1,0 +1,93 @@
+{
+  "name": "Handsfree",
+  "description": "Voice and webcam-based browsing for accessibility",
+  "version": "2.0.0",
+  "manifest_version": 3,
+  "icons": {
+    "16": "icons/icon16.svg",
+    "32": "icons/icon32.svg",
+    "48": "icons/icon48.svg",
+    "128": "icons/icon128.svg"
+  },
+  "action": {
+    "default_popup": "src/popup/shell.html",
+    "default_title": "Handsfree",
+    "default_icon": {
+      "16": "icons/icon16.svg",
+      "32": "icons/icon32.svg",
+      "48": "icons/icon48.svg",
+      "128": "icons/icon128.svg"
+    }
+  },
+  "options_page": "voice/permission.html",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["voice/content.js"],
+      "run_at": "document_end",
+      "all_frames": false
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["handsfree-content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; frame-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "models/*",
+        "models/wasm/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "commands": {
+    "toggle-tracking": {
+      "suggested_key": {
+        "default": "Alt+H",
+        "mac": "Alt+H"
+      },
+      "description": "Toggle handsfree tracking"
+    },
+    "recenter": {
+      "suggested_key": {
+        "default": "Alt+R",
+        "mac": "Alt+R"
+      },
+      "description": "Recenter cursor position"
+    },
+    "next-tab": {
+      "suggested_key": {
+        "default": "Alt+PageDown",
+        "mac": "Alt+PageDown"
+      },
+      "description": "Switch to next tab"
+    },
+    "prev-tab": {
+      "suggested_key": {
+        "default": "Alt+PageUp",
+        "mac": "Alt+PageUp"
+      },
+      "description": "Switch to previous tab"
+    }
+  }
+}

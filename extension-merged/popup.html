@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Handsfree Voice Controller</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="22"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Handsfree</h1>
+          <span class="version-tag">v1.0</span>
+        </div>
+      </div>
+      <!-- Status Badge -->
+      <div id="statusBadge" class="status-badge status-idle">
+        <span class="status-dot"></span>
+        <span id="statusText">Idle</span>
+      </div>
+    </header>
+
+    <!-- Mode Switcher -->
+    <div class="mode-switcher" role="tablist" aria-label="Operating Mode">
+      <button id="modeCommand" class="mode-btn active" role="tab" aria-selected="true" type="button">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+        <span>Command</span>
+      </button>
+
+      <button id="modeDictation" class="mode-btn" role="tab" aria-selected="false" type="button">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+        <span>Dictation</span>
+      </button>
+
+      <button id="modeReading" class="mode-btn" role="tab" aria-selected="false" type="button">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        <span>Reading</span>
+      </button>
+
+      <button id="modeBlind" class="mode-btn" role="tab" aria-selected="false" type="button" title="Eyes-Free Blind Navigation Mode">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          <circle cx="12" cy="12" r="3"/>
+          <line x1="2" y1="2" x2="22" y2="22"/>
+        </svg>
+        <span>Eyes-Free</span>
+      </button>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Visualizer / Sound Wave Animation area -->
+      <div class="visualizer-container" id="visualizer">
+        <div class="mic-pulse-ring"></div>
+        <div class="mic-icon-wrapper">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="22"/>
+          </svg>
+        </div>
+        <div class="wave-bars" id="waveBars">
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+        </div>
+      </div>
+
+      <!-- Action Controls -->
+      <div class="controls-group">
+        <button id="startBtn" class="btn btn-primary" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <span>Start Listening</span>
+        </button>
+
+        <button id="stopBtn" class="btn btn-danger" type="button" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+          <span>Stop Listening</span>
+        </button>
+      </div>
+
+      <!-- Numbered Links Overlay Quick Toggle Button -->
+      <button id="toggleNumbersBtn" class="btn btn-amber-glow full-width-btn" type="button">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="14" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        <span id="toggleNumbersText">Show Numbered Links</span>
+      </button>
+
+      <!-- Eyes-Free Blind Navigation Configuration Card -->
+      <section class="blind-mode-card" id="blindModeCard">
+        <div class="blind-mode-header">
+          <div class="blind-mode-title">
+            <div class="blind-mode-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+                <line x1="2" y1="2" x2="22" y2="22"/>
+              </svg>
+            </div>
+            <div class="blind-mode-labels">
+              <strong>Eyes-Free Blind Navigation</strong>
+              <span class="blind-mode-desc">100% voice & earcon browsing without vision</span>
+            </div>
+          </div>
+          <label class="switch-toggle" title="Toggle Eyes-Free Blind Mode (Alt+B)">
+            <input type="checkbox" id="blindModeToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="blind-mode-badges">
+          <span class="blind-badge">Auto-starts on Google</span>
+          <span class="blind-badge">Search Glide</span>
+          <span class="blind-badge">Audio Earcons</span>
+          <span class="blind-badge">Result Reader</span>
+          <span class="blind-badge-shortcut">Alt+B</span>
+        </div>
+      </section>
+
+      <!-- Processing & Status Message Box -->
+      <div id="messageBox" class="message-box message-info">
+        <span id="messageText">Click "Start Listening" to activate voice capture.</span>
+        <button id="grantMicBtn" class="link-btn hidden" type="button">Fix Mic Permission</button>
+      </div>
+
+      <!-- Transcript Section -->
+      <section class="transcript-section">
+        <div class="section-header">
+          <label for="transcriptArea">Live Transcript</label>
+          <button id="copyBtn" class="icon-btn" title="Copy transcript" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+        </div>
+        <div id="transcriptBox" class="transcript-box">
+          <p id="transcriptText" class="placeholder-text">Your transcribed speech will appear here...</p>
+        </div>
+      </section>
+
+      <!-- Webpage Reader Controls Panel -->
+      <section class="reader-section">
+        <div class="section-header">
+          <label>Webpage Speech Reader</label>
+          <span id="readingProgress" class="reading-progress-tag">Stopped</span>
+        </div>
+        
+        <!-- Primary Start Reading Button -->
+        <button id="readPlayBtn" class="btn btn-secondary-glow full-width-btn" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <span>Start Reading Page</span>
+        </button>
+
+        <!-- Reader Options -->
+        <div class="reader-mode-options">
+          <label class="toggle-option">
+            <input type="checkbox" id="pauseAfterSectionToggle" checked>
+            <span>Pause after each question (End answer with "next")</span>
+          </label>
+        </div>
+
+        <!-- Secondary Navigation Controls -->
+        <div class="reader-controls-grid">
+          <button id="prevSecBtn" class="reader-btn" type="button" aria-label="Previous section">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="19 20 9 12 19 4 19 20"/>
+            </svg>
+            <span>Prev</span>
+          </button>
+
+          <button id="readPauseBtn" class="reader-btn" type="button" aria-label="Pause reading" disabled>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="6" y="4" width="4" height="16"/>
+              <rect x="14" y="4" width="4" height="16"/>
+            </svg>
+            <span>Pause</span>
+          </button>
+
+          <button id="readStopBtn" class="reader-btn" type="button" aria-label="Stop reading" disabled>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="6" y="6" width="12" height="12"/>
+            </svg>
+            <span>Stop</span>
+          </button>
+
+          <button id="nextSecBtn" class="reader-btn" type="button" aria-label="Next section">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 4 15 12 5 20 5 4"/>
+            </svg>
+            <span>Next</span>
+          </button>
+
+          <button id="repeatSecBtn" class="reader-btn" type="button" aria-label="Repeat section">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.5 2v6h-6M2.5 22v-6h6"/>
+              <path d="M2 11.5a10 10 0 0 1 18.8-4.3L21.5 8M22 12.5a10 10 0 0 1-18.8 4.3L2.5 16"/>
+            </svg>
+            <span>Repeat</span>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Powered by <strong>Sarvam AI</strong></span>
+      <span class="backend-indicator" id="backendIndicator" title="Checking Express backend health...">
+        <span class="indicator-dot"></span> Backend
+      </span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -21,6 +21,14 @@ let offscreenCreating = null
 // voice on/off toggle is deferred, so it currently only gates the UI state.
 const moduleState = { voice: true, headhands: true }
 
+// Shown in the tabs drop-down when no open tabs can be queried.
+const FALLBACK_TABS = [
+  { title: 'Google', url: 'https://www.google.com' },
+  { title: 'YouTube', url: 'https://www.youtube.com' },
+  { title: 'GitHub', url: 'https://github.com' },
+  { title: 'Wikipedia', url: 'https://www.wikipedia.org' },
+]
+
 async function loadModuleState() {
   try {
     const result = await chrome.storage.local.get('handsfree_module_state')
@@ -436,6 +444,56 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     forwardToAllTabs({ type: 'MODULE_STATE', voice: moduleState.voice, headhands: moduleState.headhands })
     chrome.runtime.sendMessage({ type: 'MODULE_STATE', voice: moduleState.voice, headhands: moduleState.headhands }, () => void chrome.runtime.lastError)
     sendResponse({ success: true, state: { voice: moduleState.voice, headhands: trackingEnabled } })
+    return true
+  }
+
+  if (message.type === 'PAGE_NAV') {
+    const tabId = sender?.tab?.id ?? activeTabId
+    if (tabId != null) {
+      if (message.action === 'refresh') {
+        chrome.tabs.reload(tabId, () => void chrome.runtime.lastError)
+      } else if (message.action === 'back') {
+        chrome.tabs.goBack(tabId, () => void chrome.runtime.lastError)
+      } else if (message.action === 'forward') {
+        chrome.tabs.goForward(tabId, () => void chrome.runtime.lastError)
+      }
+    }
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'GET_RECENT_TABS') {
+    chrome.tabs.query({}, (tabs) => {
+      const list = (tabs || [])
+        .filter((tab) => tab.id != null)
+        .map((tab) => ({
+          id: tab.id,
+          title: tab.title || tab.url || 'Untitled',
+          url: tab.url || '',
+          active: Boolean(tab.active),
+          windowId: tab.windowId,
+          lastAccessed: tab.lastAccessed || 0,
+        }))
+        .sort((a, b) => {
+          if (a.active !== b.active) return a.active ? -1 : 1
+          return b.lastAccessed - a.lastAccessed
+        })
+        .slice(0, 10)
+      sendResponse({ tabs: list.length ? list : FALLBACK_TABS })
+    })
+    return true
+  }
+
+  if (message.type === 'ACTIVATE_TAB') {
+    if (message.tabId != null) {
+      chrome.tabs.update(message.tabId, { active: true }, (tab) => {
+        if (chrome.runtime.lastError) return
+        if (tab?.windowId != null) chrome.windows.update(tab.windowId, { focused: true })
+      })
+    } else if (message.url) {
+      chrome.tabs.create({ url: message.url, active: true })
+    }
+    sendResponse({ success: true })
     return true
   }
 

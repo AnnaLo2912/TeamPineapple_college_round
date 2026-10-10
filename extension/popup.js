@@ -516,7 +516,9 @@ document.addEventListener('DOMContentLoaded', () => {
       'go to search', 'cursor go to search', 'search bar', 'focus search', 'search input', 'find search',
       'done', 'finished', 'query done', 'done typing', 'search done',
       'search', 'execute search', 'submit search', 'google search', 'run search',
-      'read links', 'read results', 'read top links', 'read search results', 'read result links',
+      'read', 'read links', 'read results', 'read top links', 'read search results', 'read result links',
+      'read hotels', 'read top hotels', 'read places', 'read restaurants',
+      'what are the hotels', 'what are the results', 'tell me the results', 'tell me the hotels', 'repeat results',
       'blind mode', 'eyes free', 'eyes free mode', 'enable blind mode', 'start blind mode',
       'disable blind mode', 'stop blind mode', 'exit blind mode', 'turn off blind mode',
       'scroll down', 'scroll up', 'page down', 'page up',
@@ -527,10 +529,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (blindCommands.includes(lower)) return true;
 
-    // Pattern for click link N, click result N, open N, etc.
-    if (/^(?:click|open|select|press|go\s*to)\s+(?:link\s+|result\s+|number\s+|#)?\d{1,3}$/i.test(lower)) return true;
-    if (/^(?:link|result|number)\s+#?\d{1,3}$/i.test(lower)) return true;
-    if (/^(?:click|open)\s+(?:link\s+|result\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten)$/i.test(lower)) return true;
+    // Pattern for click link N, click result N, click hotel N, open N, etc.
+    if (/^(?:click|open|select|press|go\s*to)\s+(?:link\s+|result\s+|hotel\s+|place\s+|number\s+|#)?\d{1,3}$/i.test(lower)) return true;
+    if (/^(?:link|result|hotel|place|number)\s+#?\d{1,3}$/i.test(lower)) return true;
+    if (/^(?:click|open)\s+(?:link\s+|result\s+|hotel\s+|place\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten)$/i.test(lower)) return true;
 
     return false;
   }
@@ -923,16 +925,19 @@ document.addEventListener('DOMContentLoaded', () => {
         url.includes('addons.mozilla.org');
 
       if (isRestrictedUrl) {
+        if (message.action === 'EXECUTE_SEARCH' && message.query) {
+          await chrome.tabs.update(activeTab.id, { url: `https://www.google.com/search?q=${encodeURIComponent(message.query)}` });
+          return { success: true, message: 'Navigating to Google Search...' };
+        } else if (message.action === 'GO_TO_SEARCH') {
+          await chrome.tabs.update(activeTab.id, { url: 'https://www.google.com' });
+          return { success: true, message: 'Opening Google Search...' };
+        }
         return { success: false, error: 'Handsfree is not supported on Chrome system or Webstore pages.' };
       }
 
-      // 1. Try direct messaging
-      try {
-        const response = await chrome.tabs.sendMessage(activeTab.id, message);
-        if (response !== undefined) return response;
-      } catch (msgErr) {
-        // Connection failed; content script might not be loaded on tab yet
-      }
+      // 1. Try direct messaging safely without throwing unchecked errors
+      const directResponse = await sendTabMessageSafe(activeTab.id, message);
+      if (directResponse) return directResponse;
 
       // 2. Fallback: Programmatically inject content script on demand
       if (chrome.scripting && chrome.scripting.executeScript) {
@@ -957,6 +962,12 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           return { success: false, error: 'Cannot access page content on this tab.' };
         }
+      }
+
+      // Final fallback for search actions
+      if (message.action === 'EXECUTE_SEARCH' && message.query) {
+        await chrome.tabs.update(activeTab.id, { url: `https://www.google.com/search?q=${encodeURIComponent(message.query)}` });
+        return { success: true, message: 'Navigating to Google Search...' };
       }
 
       // Final fallback for search actions
@@ -1508,8 +1519,24 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Link Reader -> Say "Read links" / "Read results"
-    if (text === 'read links' || text === 'read results' || text === 'read top links' || text === 'read search results' || text === 'read result links') {
+    // Link Reader -> Say "Read links" / "Read results" / "Read hotels"
+    if (
+      text === 'read' ||
+      text === 'read links' ||
+      text === 'read results' ||
+      text === 'read top links' ||
+      text === 'read search results' ||
+      text === 'read result links' ||
+      text === 'read hotels' ||
+      text === 'read top hotels' ||
+      text === 'read places' ||
+      text === 'read restaurants' ||
+      text === 'what are the hotels' ||
+      text === 'what are the results' ||
+      text === 'tell me the results' ||
+      text === 'tell me the hotels' ||
+      text === 'repeat results'
+    ) {
       messageText.textContent = 'Command: Read search results';
       sendToActiveTab({ action: 'READ_SEARCH_RESULTS' }).then(res => {
         if (res && res.success) {
@@ -1521,8 +1548,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Direct Search Result Click ("Click link 1", "Click 1", "Open result 1")
-    const searchResultMatch = text.match(/^(?:click|open)\s+(?:link\s+|result\s+)?(\d{1,2})$/) || text.match(/^(?:link|result)\s+(\d{1,2})$/);
+    // Direct Search Result Click ("Click link 1", "Click 1", "Open result 1", "Click hotel 1", "Hotel 1")
+    const searchResultMatch = text.match(/^(?:click|open)\s+(?:link\s+|result\s+|hotel\s+|place\s+)?(\d{1,2})$/) || text.match(/^(?:link|result|hotel|place)\s+(\d{1,2})$/);
     if (searchResultMatch && searchResultMatch[1]) {
       const resultIndex = parseInt(searchResultMatch[1], 10);
       messageText.textContent = `Command: Open result #${resultIndex}`;

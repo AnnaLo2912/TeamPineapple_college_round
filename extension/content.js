@@ -1060,6 +1060,7 @@
   let screenDictatorDebounceTimer = null;
   let lastSpokenScreenText = '';
   let isScreenSpeaking = false;
+  let activeScreenUtterance = null;
 
   function speakScreenText(text, interrupt = true) {
     return new Promise((resolve) => {
@@ -1067,32 +1068,54 @@
         resolve();
         return;
       }
+      const UtteranceClass = window.SpeechSynthesisUtterance;
+      if (!UtteranceClass) {
+        resolve();
+        return;
+      }
+
       isScreenSpeaking = true;
       pauseInTabVoiceListening();
 
       if (interrupt) {
         try { window.speechSynthesis.cancel(); } catch (e) {}
       }
-      const UtteranceClass = window.SpeechSynthesisUtterance;
-      if (!UtteranceClass) {
-        isScreenSpeaking = false;
-        resolve();
-        return;
-      }
+
+      try {
+        window.speechSynthesis.resume();
+      } catch (e) {}
+
       const utterance = new UtteranceClass(text.trim());
-      utterance.rate = 1.05;
+      utterance.rate = 1.0;
       utterance.pitch = 1.0;
       utterance.lang = 'en-US';
 
+      activeScreenUtterance = utterance;
+
+      let finished = false;
       const finish = () => {
+        if (finished) return;
+        finished = true;
         isScreenSpeaking = false;
+        activeScreenUtterance = null;
         setTimeout(() => {
           resumeInTabVoiceListening();
         }, 300);
         resolve();
       };
+
       utterance.onend = finish;
-      utterance.onerror = finish;
+      utterance.onerror = (e) => {
+        console.warn('[Handsfree Screen TTS] Utterance error:', e);
+        finish();
+      };
+
+      const wordCount = text.trim().split(/\s+/).length;
+      const timeoutMs = Math.max(3000, wordCount * 550);
+      setTimeout(() => {
+        if (!finished) finish();
+      }, timeoutMs);
+
       window.speechSynthesis.speak(utterance);
     });
   }
@@ -1293,50 +1316,167 @@
       setTimeout(() => {
         window.location.href = 'https://www.google.com/search?q=' + encodeURIComponent(query);
       }, 350);
+    } else {
+      setTimeout(() => {
+        if (isBlindModeActive) {
+          autoAnnounceSearchResults();
+        }
+      }, 2000);
     }
 
     return { success: true, query };
   }
 
-  // --- Search Results Sequential Reader ---
+  // --- Search Results Sequential Reader & Local Pack / Hotel Extractor ---
 
   function extractSearchResults() {
     currentSearchResults = [];
-    const selectors = [
+    const seenTitles = new Set();
+    const seenUrls = new Set();
+
+    // 1. Google Local Places, Hotels, & Restaurants Pack (Critical for "hotels nearby" and "restaurants near me")
+    const localSelectors = [
+      'div.dbg0pd',                                // Classic local pack business title (e.g. Hotel / Restaurant name)
+      'div.rllt__details div[role="heading"]',     // Local 3-pack headline
+      'div.rllt__details h3',                      // Local place card h3
+      'div.OSrXXb',                                // Google maps place name
+      'div.bNmXab [role="heading"]',               // Google hotels pack title
+      'div.BgYkof',                                // Hotel title card
+      'div.kno-fb-ctx [role="heading"]',           // Hotel knowledge title
+      'div.VkpGBb a.vw7Du',                        // Local pack card link
+      'a.C8PtEc div[role="heading"]',              // Places pack card
+      '[data-local-attribute="d3ph"]',             // Local attribute container
+      '[data-attrid="title"]'                      // Knowledge panel title
+    ];
+
+    localSelectors.forEach(sel => {
+      document.querySelectorAll(sel).forEach(el => {
+        let text = (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ');
+        if (!text || text.length < 3 || text.length > 120) return;
+        if (/^(₹|\$|€|£)\d+/i.test(text)) return;
+        if (/^(directions|website|call|save|share)$/i.test(text)) return;
+
+        // Check if there is rating information in the parent card
+        const cardContainer = el.closest('.VkpGBb') || el.closest('.rllt__details') || el.closest('.bNmXab') || el.closest('div.g') || el.parentElement;
+        let ratingStr = '';
+        if (cardContainer) {
+          const ratingEl = cardContainer.querySelector('.MW4etd') || cardContainer.querySelector('[aria-label*="star" i]') || cardContainer.querySelector('[aria-label*="Rating" i]');
+          if (ratingEl) {
+            const rawRating = (ratingEl.getAttribute('aria-label') || ratingEl.innerText || '').trim();
+            const ratingMatch = rawRating.match(/(\d\.\d)/);
+            if (ratingMatch) ratingStr = `, rated ${ratingMatch[1]} stars`;
+          }
+        }
+
+        const anchor = el.closest('a') || el.querySelector('a') || el.parentElement?.closest('a') || el.closest('[role="button"]') || el;
+        const href = (anchor instanceof HTMLAnchorElement && anchor.href) ? anchor.href : '';
+        const cleanTitleLower = text.toLowerCase();
+
+        if (!seenTitles.has(cleanTitleLower)) {
+          seenTitles.add(cleanTitleLower);
+          currentSearchResults.push({
+            number: currentSearchResults.length + 1,
+            title: text + ratingStr,
+            rawTitle: text,
+            url: href || window.location.href,
+            element: anchor,
+            isLocal: true
+          });
+        }
+      });
+    });
+
+    // 2. Standard Organic Search Results & Knowledge Panels
+    const organicSelectors = [
       '#search h3',
       '#rso h3',
       'div.g h3',
-      '[data-sokoban-container] h3',
+      '.MjjYud h3',
       '.yuRUbf h3',
-      'main a h3',
-      'main h3 a',
+      '[data-sokoban-container] h3',
+      'main h3',
       'article h3',
       '.result__title'
     ];
 
-    const rawHeadings = Array.from(document.querySelectorAll(selectors.join(', ')));
-    const seenUrls = new Set();
+    const rawHeadings = Array.from(document.querySelectorAll(organicSelectors.join(', ')));
 
     rawHeadings.forEach((h3) => {
       const text = (h3.innerText || h3.textContent || '').trim().replace(/\s+/g, ' ');
       if (!text || text.length < 3) return;
 
       const anchor = h3.closest('a') || h3.querySelector('a') || h3.parentElement?.closest('a');
-      if (!anchor || !anchor.href) return;
+      const url = anchor && anchor.href ? anchor.href : '';
+      if (url.startsWith('javascript:')) return;
 
-      const url = anchor.href;
-      if (url.startsWith('javascript:') || url.includes('google.com/search') || seenUrls.has(url)) return;
+      const cleanTitleLower = text.toLowerCase();
+      if (seenTitles.has(cleanTitleLower)) return;
+      if (url && seenUrls.has(url)) return;
 
-      seenUrls.add(url);
+      // Filter out navigation & boilerplate
+      if (/^(people also ask|related searches|images for|videos for|more results|filters)/i.test(text)) return;
+
+      // Extract rating if present in organic rich snippet
+      const cardContainer = h3.closest('div.g') || h3.closest('.MjjYud') || h3.parentElement;
+      let ratingStr = '';
+      if (cardContainer) {
+        const ratingEl = cardContainer.querySelector('[aria-label*="Rating" i]') || cardContainer.querySelector('[aria-label*="star" i]');
+        if (ratingEl) {
+          const rawRating = (ratingEl.getAttribute('aria-label') || ratingEl.innerText || '').trim();
+          const ratingMatch = rawRating.match(/(\d\.\d)/);
+          if (ratingMatch) ratingStr = `, rated ${ratingMatch[1]} stars`;
+        }
+      }
+
+      seenTitles.add(cleanTitleLower);
+      if (url) seenUrls.add(url);
+
       currentSearchResults.push({
         number: currentSearchResults.length + 1,
-        title: text,
+        title: text + ratingStr,
+        rawTitle: text,
         url: url,
-        element: anchor
+        element: anchor || h3,
+        isLocal: false
       });
     });
 
-    return currentSearchResults.slice(0, 8); // Top 8 clean results
+    // Re-index results sequentially 1..N
+    currentSearchResults = currentSearchResults.map((r, idx) => ({
+      ...r,
+      number: idx + 1
+    }));
+
+    return currentSearchResults.slice(0, 5); // Return top 5 best results
+  }
+
+  let lastAnnouncedResultsSignature = '';
+
+  function autoAnnounceSearchResults() {
+    if (!isBlindModeActive) return;
+    const isGoogle = /google\.[a-z.]+/i.test(window.location.hostname);
+    const isSearch = window.location.pathname.includes('/search');
+    if (!isGoogle || !isSearch) return;
+
+    // Give dynamic search results DOM cards a moment to render
+    setTimeout(() => {
+      if (!isBlindModeActive) return;
+      const results = extractSearchResults();
+      if (results.length > 0) {
+        const signature = results.map(r => r.rawTitle).join('|');
+        if (signature === lastAnnouncedResultsSignature) return;
+        lastAnnouncedResultsSignature = signature;
+
+        playEarconResultPing();
+        const top5 = results.slice(0, 5);
+        const resultItems = top5.map(r => `Result ${r.number}: ${r.title}`).join('. ');
+        const speech = `Google search results loaded. Here are the top ${top5.length} results: ${resultItems}. Say Click link 1, or any number to open.`;
+        speakScreenText(speech);
+        updateBlindIndicator(`🗣️ Dictating top ${top5.length} results...`, false);
+      } else {
+        speakScreenText('Google results loaded. Say Read results to listen to headlines.');
+      }
+    }, 1200);
   }
 
   function readSearchResults() {
@@ -1348,10 +1488,11 @@
     }
 
     playEarconResultPing();
-    const resultSummaries = results.map(r => `Result ${r.number}: ${r.title}`).join('. ');
-    const announcement = `Found ${results.length} results. ${resultSummaries}. Say "Click link" followed by a number to open.`;
+    const top5 = results.slice(0, 5);
+    const resultSummaries = top5.map(r => `Result ${r.number}: ${r.title}`).join('. ');
+    const announcement = `Found ${top5.length} top results. ${resultSummaries}. Say "Click link" followed by a number to open.`;
     speakScreenText(announcement);
-    return { success: true, count: results.length, results: results.map(r => ({ number: r.number, title: r.title, url: r.url })) };
+    return { success: true, count: top5.length, results: top5.map(r => ({ number: r.number, title: r.title, url: r.url })) };
   }
 
   function clickSearchResult(num) {
@@ -1370,12 +1511,16 @@
     }
 
     playEarconClick();
-    speakScreenText(`Opening Result ${targetNum}: ${item.title}`);
+    speakScreenText(`Opening Result ${targetNum}: ${item.rawTitle || item.title}`);
     flashHighlight(item.element);
 
     setTimeout(() => {
       if (item.element) item.element.click();
-      else window.location.href = item.url;
+      if (item.url && item.url.startsWith('http') && !item.url.includes('google.com/search')) {
+        setTimeout(() => {
+          window.location.href = item.url;
+        }, 300);
+      }
     }, 400);
 
     return { success: true, number: targetNum, title: item.title, url: item.url };
@@ -1565,8 +1710,8 @@
         setTimeout(() => glideToSearchInput(), 800);
       } else if (isGoogle && isSearch) {
         setTimeout(() => {
-          speakScreenText('Google results loaded. Say Read results to listen to headlines, or Go to search to search again.');
-        }, 800);
+          autoAnnounceSearchResults();
+        }, 500);
       }
     } else {
       stopInTabVoiceListening();
@@ -1589,9 +1734,9 @@
         if (isGoogle && !isSearch) {
           glideToSearchInput();
         } else if (isGoogle && isSearch) {
-          speakScreenText('Google results loaded. Say Read results to listen to headlines, or Go to search to search again.');
+          autoAnnounceSearchResults();
         } else {
-          speakScreenText('Eyes-Free navigation active on page. Speak your commands.');
+          speakScreenText(`Eyes-Free navigation active on page. Speak your commands.`);
         }
       }, 700);
     }

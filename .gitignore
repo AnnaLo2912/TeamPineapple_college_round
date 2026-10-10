@@ -76,3 +76,4 @@ reports/generated/
 *.crt
 
 test-ref/
+extra/

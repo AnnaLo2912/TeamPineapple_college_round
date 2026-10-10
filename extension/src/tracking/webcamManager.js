@@ -1,18 +1,14 @@
-import type { TrackerConfig } from './types'
-
 export class WebcamManager {
-  private stream: MediaStream | null = null
-  private video: HTMLVideoElement | null = null
-  private config: TrackerConfig
-  private onFrameCallback: ((video: HTMLVideoElement, timestamp: number) => void) | null = null
-  private animationId: number | null = null
-  private isRunning: boolean = false
-
-  constructor(config: TrackerConfig) {
+  constructor(config) {
+    this.stream = null
+    this.video = null
     this.config = config
+    this.onFrameCallback = null
+    this.animationId = null
+    this.isRunning = false
   }
 
-  async start(videoElement?: HTMLVideoElement): Promise<HTMLVideoElement> {
+  async start(videoElement) {
     if (this.isRunning && this.video) {
       return this.video
     }
@@ -32,10 +28,10 @@ export class WebcamManager {
       this.video.setAttribute('playsinline', 'true')
       this.video.setAttribute('muted', 'true')
       
-      await new Promise<void>((resolve, reject) => {
+      await new Promise((resolve, reject) => {
         if (!this.video) return reject(new Error('No video element'))
         this.video.onloadedmetadata = () => {
-          this.video!.play().then(resolve).catch(reject)
+          this.video.play().then(resolve).catch(reject)
         }
         this.video.onerror = reject
         setTimeout(() => reject(new Error('Video load timeout')), 10000)
@@ -66,8 +62,8 @@ export class WebcamManager {
     }
   }
 
-  private startFrameLoop() {
-    const loop = (timestamp: number) => {
+  startFrameLoop() {
+    const loop = (timestamp) => {
       if (!this.isRunning || !this.video) return
       if (this.onFrameCallback && this.video.readyState >= 2) {
         this.onFrameCallback(this.video, timestamp)
@@ -77,19 +73,19 @@ export class WebcamManager {
     this.animationId = requestAnimationFrame(loop)
   }
 
-  onFrame(callback: (video: HTMLVideoElement, timestamp: number) => void) {
+  onFrame(callback) {
     this.onFrameCallback = callback
   }
 
-  getVideoElement(): HTMLVideoElement | null {
+  getVideoElement() {
     return this.video
   }
 
-  isActive(): boolean {
+  isActive() {
     return this.isRunning && this.video !== null && this.video.readyState >= 2
   }
 
-  async switchCamera(deviceId: string): Promise<void> {
+  async switchCamera(deviceId) {
     const wasRunning = this.isRunning
     this.stop()
     this.stream = await navigator.mediaDevices.getUserMedia({
@@ -104,12 +100,12 @@ export class WebcamManager {
     }
   }
 
-  async listCameras(): Promise<MediaDeviceInfo[]> {
+  async listCameras() {
     const devices = await navigator.mediaDevices.enumerateDevices()
     return devices.filter(d => d.kind === 'videoinput')
   }
 
-  updateConfig(config: Partial<TrackerConfig>) {
+  updateConfig(config) {
     this.config = { ...this.config, ...config }
   }
 }

@@ -1,31 +1,28 @@
-import type { Point, ClickableElement } from '../../shared/types'
-import { CURSOR_SIZE, DWELL_RING_SIZE, DWELL_TIME } from '../../shared/constants'
+import { CURSOR_SIZE, DWELL_RING_SIZE, DWELL_TIME } from '../../shared/constants.js'
 
 export class CursorOverlay {
-  private cursorElement: HTMLElement | null = null
-  private svgElement: SVGElement | null = null
-  private dwellRingElement: SVGElement | null = null
-  private labelElement: HTMLElement | null = null
-  private statusHud: HTMLElement | null = null
-  private currentPosition: Point | null = null
-  private targetElement: ClickableElement | null = null
-  private isDwelling: boolean = false
-  private dwellProgress: number = 0
-  private mode: 'face' | 'hand' = 'face'
-  private magneticRadius: number
-  private snapStrength: number
-  private animationId: number | null = null
-  private dwellStartTime: number = 0
-  private onDwellCompleteCallback: ((element: ClickableElement) => void) | null = null
-  private dwellTime: number = DWELL_TIME
-
-  constructor(magneticRadius: number, snapStrength: number) {
+  constructor(magneticRadius, snapStrength) {
+    this.cursorElement = null
+    this.svgElement = null
+    this.dwellRingElement = null
+    this.labelElement = null
+    this.statusHud = null
+    this.currentPosition = null
+    this.targetElement = null
+    this.isDwelling = false
+    this.dwellProgress = 0
+    this.mode = 'face'
     this.magneticRadius = magneticRadius
     this.snapStrength = snapStrength
+    this.animationId = null
+    this.dwellStartTime = 0
+    this.onDwellCompleteCallback = null
+    this.dwellTime = DWELL_TIME
+
     this.createElements()
   }
 
-  private createElements() {
+  createElements() {
     this.cursorElement = document.createElement('div')
     this.cursorElement.className = 'handsfree-cursor'
     this.cursorElement.style.cssText = `
@@ -105,7 +102,7 @@ export class CursorOverlay {
     this.buildSVG()
   }
 
-  showStatus(text: string) {
+  showStatus(text) {
     if (!this.statusHud) return
     this.statusHud.textContent = text
     this.statusHud.style.display = 'block'
@@ -117,7 +114,7 @@ export class CursorOverlay {
     }
   }
 
-  private buildSVG() {
+  buildSVG() {
     if (!this.svgElement) return
 
     const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs')
@@ -217,7 +214,7 @@ export class CursorOverlay {
     this.dwellRingElement?.appendChild(dwellRing)
   }
 
-  updatePosition(position: Point | null) {
+  updatePosition(position) {
     if (!position || !this.cursorElement) {
       this.hide()
       return
@@ -229,7 +226,7 @@ export class CursorOverlay {
     this.cursorElement.style.top = `${position.y - CURSOR_SIZE / 2}px`
   }
 
-  updateTarget(target: ClickableElement | null) {
+  updateTarget(target) {
     this.targetElement = target
     const isOverTarget = target !== null
 
@@ -262,29 +259,29 @@ export class CursorOverlay {
     }
 
     if (target) {
-      this.labelElement!.style.display = 'block'
-      this.labelElement!.textContent = `${target.tagName.toUpperCase()}${target.type ? `[${target.type}]` : ''}${target.isLink ? ' → Link' : ''}`
-      this.labelElement!.style.left = `${target.center.x - this.currentPosition!.x}px`
-      this.labelElement!.style.top = `${target.center.y - this.currentPosition!.y}px`
+      this.labelElement.style.display = 'block'
+      this.labelElement.textContent = `${target.tagName.toUpperCase()}${target.type ? `[${target.type}]` : ''}${target.isLink ? ' → Link' : ''}`
+      this.labelElement.style.left = `${target.center.x - this.currentPosition.x}px`
+      this.labelElement.style.top = `${target.center.y - this.currentPosition.y}px`
     } else {
-      this.labelElement!.style.display = 'none'
+      this.labelElement.style.display = 'none'
     }
   }
 
-  setMode(mode: 'face' | 'hand') {
+  setMode(mode) {
     this.mode = mode
   }
 
-  setMagneticParams(radius: number, strength: number) {
+  setMagneticParams(radius, strength) {
     this.magneticRadius = radius
     this.snapStrength = strength
   }
 
-  setDwellTime(ms: number) {
+  setDwellTime(ms) {
     this.dwellTime = ms
   }
 
-  startDwell(target: ClickableElement, onComplete: (element: ClickableElement) => void) {
+  startDwell(target, onComplete) {
     this.isDwelling = true
     this.dwellProgress = 0
     this.dwellStartTime = Date.now()
@@ -298,7 +295,7 @@ export class CursorOverlay {
     this.animateDwell()
   }
 
-  private animateDwell() {
+  animateDwell() {
     if (!this.isDwelling) return
 
     const elapsed = Date.now() - this.dwellStartTime
@@ -320,7 +317,7 @@ export class CursorOverlay {
     this.animationId = requestAnimationFrame(() => this.animateDwell())
   }
 
-  private completeDwell() {
+  completeDwell() {
     this.isDwelling = false
     this.dwellProgress = 0
 

@@ -1,14 +1,11 @@
-import type { ClickableElement } from '../../shared/types'
-
 export class TargetHighlighter {
-  private highlightElement: HTMLElement | null = null
-  private currentTarget: ClickableElement | null = null
-
   constructor() {
+    this.highlightElement = null
+    this.currentTarget = null
     this.createHighlightElement()
   }
 
-  private createHighlightElement() {
+  createHighlightElement() {
     this.highlightElement = document.createElement('div')
     this.highlightElement.className = 'handsfree-highlight'
     this.highlightElement.style.cssText = `
@@ -35,7 +32,7 @@ export class TargetHighlighter {
     }
   }
 
-  updateTarget(target: ClickableElement | null) {
+  updateTarget(target) {
     this.currentTarget = target
 
     if (!target || !this.highlightElement) {

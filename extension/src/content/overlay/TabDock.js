@@ -1,48 +1,12 @@
-export type NudgeDirection = 'up' | 'down' | 'left' | 'right'
-export type TabDirection = -1 | 1
-
-export type DockAction =
-  | 'nudge-up'
-  | 'nudge-down'
-  | 'nudge-left'
-  | 'nudge-right'
-  | 'scroll-up'
-  | 'scroll-down'
-  | 'recenter'
-  | 'tab-prev'
-  | 'tab-next'
-  | 'stop'
-
-export interface DockHit {
-  element: HTMLElement
-  action: DockAction
-  rect: DOMRect
-}
-
-export interface TabDockCallbacks {
-  onNudge: (dir: NudgeDirection) => void
-  onStop: () => void
-  onScroll: (dir: -1 | 1, element: HTMLElement) => void
-  onRecenter: () => void
-  onTab: (dir: TabDirection) => void
-}
-
-interface DockButton {
-  element: HTMLButtonElement
-  action: DockAction
-  kind: 'nudge' | 'scroll' | 'recenter' | 'tab' | 'stop'
-  dir?: NudgeDirection | TabDirection
-}
-
 export class TabDock {
-  private dockElement: HTMLElement | null = null
-  private buttons: DockButton[] = []
-
-  constructor(private callbacks: TabDockCallbacks) {
+  constructor(callbacks) {
+    this.callbacks = callbacks
+    this.dockElement = null
+    this.buttons = []
     this.createElements()
   }
 
-  private createElements() {
+  createElements() {
     this.dockElement = document.createElement('div')
     this.dockElement.className = 'handsfree-tab-dock'
     this.dockElement.style.cssText = `
@@ -85,7 +49,7 @@ export class TabDock {
     document.body.appendChild(this.dockElement)
   }
 
-  private row(buttons: HTMLButtonElement[]) {
+  row(buttons) {
     if (!this.dockElement) return
     const row = document.createElement('div')
     row.style.cssText = 'display: flex; gap: 12px;'
@@ -93,22 +57,14 @@ export class TabDock {
     this.dockElement.appendChild(row)
   }
 
-  private divider() {
+  divider() {
     if (!this.dockElement) return
     const line = document.createElement('div')
     line.style.cssText = 'width: 100%; height: 1px; background: rgba(255,255,255,0.12);'
     this.dockElement.appendChild(line)
   }
 
-  private button(
-    label: string,
-    title: string,
-    kind: DockButton['kind'],
-    action: DockAction,
-    dir?: NudgeDirection | TabDirection,
-    primary: boolean = false,
-    scrollDir?: -1 | 1
-  ): HTMLButtonElement {
+  button(label, title, kind, action, dir, primary = false, scrollDir) {
     const button = document.createElement('button')
     button.type = 'button'
     button.textContent = label
@@ -132,7 +88,7 @@ export class TabDock {
       transition: all 0.15s ease;
     `
 
-    const record: DockButton = { element: button, action, kind, dir }
+    const record = { element: button, action, kind, dir }
     this.buttons.push(record)
 
     button.addEventListener('mouseenter', () => {
@@ -146,26 +102,26 @@ export class TabDock {
     button.addEventListener('click', () => {
       switch (kind) {
         case 'nudge':
-          this.callbacks.onNudge(dir as NudgeDirection)
+          this.callbacks.onNudge(dir)
           break
         case 'stop':
           this.callbacks.onStop()
           break
         case 'scroll':
-          this.callbacks.onScroll((scrollDir ?? 1) as -1 | 1, button)
+          this.callbacks.onScroll(scrollDir ?? 1, button)
           break
         case 'recenter':
           this.callbacks.onRecenter()
           break
         case 'tab':
-          this.callbacks.onTab(dir as TabDirection)
+          this.callbacks.onTab(dir)
           break
       }
     })
     return button
   }
 
-  hitTest(x: number, y: number): DockHit | null {
+  hitTest(x, y) {
     for (const b of this.buttons) {
       const rect = b.element.getBoundingClientRect()
       if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
@@ -175,7 +131,7 @@ export class TabDock {
     return null
   }
 
-  isOverDock(x: number, y: number): boolean {
+  isOverDock(x, y) {
     const el = this.dockElement
     if (!el) return false
     const rect = el.getBoundingClientRect()

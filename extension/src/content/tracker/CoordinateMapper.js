@@ -1,36 +1,30 @@
-import type { Point, CalibrationData, CalibrationPoint, TrackerConfig } from '../../shared/types'
-
 export class CoordinateMapper {
-  private config: TrackerConfig
-  private calibration: CalibrationData | null = null
-  private smoothedPoint: Point | null = null
-  private lastRawPoint: Point | null = null
-  private recenterOrigin: Point = { x: 0.5, y: 0.5 }
-  private viewportWidth: number
-  private viewportHeight: number
-
-  constructor(config: TrackerConfig) {
+  constructor(config) {
     this.config = config
+    this.calibration = null
+    this.smoothedPoint = null
+    this.lastRawPoint = null
+    this.recenterOrigin = { x: 0.5, y: 0.5 }
     this.viewportWidth = window.innerWidth
     this.viewportHeight = window.innerHeight
     window.addEventListener('resize', this.handleResize.bind(this))
   }
 
-  private handleResize() {
+  handleResize() {
     this.viewportWidth = window.innerWidth
     this.viewportHeight = window.innerHeight
   }
 
-  setConfig(config: Partial<TrackerConfig>) {
+  setConfig(config) {
     this.config = { ...this.config, ...config }
   }
 
-  setCalibration(data: CalibrationData) {
+  setCalibration(data) {
     this.calibration = data
     this.resetRecenter()
   }
 
-  getCalibration(): CalibrationData | null {
+  getCalibration() {
     return this.calibration
   }
 
@@ -39,7 +33,7 @@ export class CoordinateMapper {
     this.resetRecenter()
   }
 
-  recenterDirect(cameraCenter: Point) {
+  recenterDirect(cameraCenter) {
     this.recenterOrigin = { ...cameraCenter }
   }
 
@@ -47,18 +41,16 @@ export class CoordinateMapper {
     this.recenterOrigin = { x: 0.5, y: 0.5 }
   }
 
-  mapPoint(rawPoint: Point): Point {
+  mapPoint(rawPoint) {
     if (!this.calibration || !this.calibration.matrix) {
       return this.mapDirect(rawPoint)
     }
     return this.mapCalibrated(rawPoint)
   }
 
-  private mapDirect(rawPoint: Point): Point {
+  mapDirect(rawPoint) {
     const { sensitivity, deadZone } = this.config
 
-    // Webcam is mirrored: user's right = landmark x decreases.
-    // With a recenter origin, wherever the head is maps to screen center.
     let dx = (this.recenterOrigin.x - rawPoint.x) * sensitivity
     let dy = (rawPoint.y - this.recenterOrigin.y) * sensitivity
 
@@ -74,8 +66,8 @@ export class CoordinateMapper {
     return { x, y }
   }
 
-  private mapCalibrated(rawPoint: Point): Point {
-    const m = this.calibration!.matrix!
+  mapCalibrated(rawPoint) {
+    const m = this.calibration.matrix
 
     const x = m[0] * rawPoint.x + m[1] * rawPoint.y + m[2]
     const y = m[3] * rawPoint.x + m[4] * rawPoint.y + m[5]
@@ -86,7 +78,7 @@ export class CoordinateMapper {
     }
   }
 
-  smoothPoint(rawPoint: Point): Point {
+  smoothPoint(rawPoint) {
     const alpha = this.config.smoothing
 
     if (this.smoothedPoint === null) {
@@ -95,7 +87,7 @@ export class CoordinateMapper {
       return this.smoothedPoint
     }
 
-    const rawDist = Math.hypot(rawPoint.x - this.lastRawPoint!.x, rawPoint.y - this.lastRawPoint!.y)
+    const rawDist = Math.hypot(rawPoint.x - this.lastRawPoint.x, rawPoint.y - this.lastRawPoint.y)
     const adaptiveAlpha = rawDist > 0.02 ? Math.min(alpha * 3, 0.3) : alpha
 
     this.smoothedPoint.x += (rawPoint.x - this.smoothedPoint.x) * adaptiveAlpha
@@ -110,11 +102,11 @@ export class CoordinateMapper {
     this.lastRawPoint = null
   }
 
-  computeCalibrationMatrix(points: CalibrationPoint[]): number[] | null {
+  computeCalibrationMatrix(points) {
     if (points.length < 4) return null
 
-    const A: number[] = []
-    const B: number[] = []
+    const A = []
+    const B = []
 
     for (const p of points) {
       A.push(p.camera.x, p.camera.y, 1, 0, 0, 0)
@@ -129,7 +121,7 @@ export class CoordinateMapper {
     }
   }
 
-  private solveLeastSquares(A: number[], B: number[], n: number): number[] {
+  solveLeastSquares(A, B, n) {
     const m = B.length
     const AT = new Array(n * m).fill(0)
     for (let i = 0; i < m; i++) {
@@ -161,7 +153,7 @@ export class CoordinateMapper {
     return this.gaussianElimination(ATA, ATB, n)
   }
 
-  private gaussianElimination(A: number[], B: number[], n: number): number[] {
+  gaussianElimination(A, B, n) {
     const M = A.map((val, i) => [...A.slice(i * n, (i + 1) * n), B[i]])
 
     for (let i = 0; i < n; i++) {

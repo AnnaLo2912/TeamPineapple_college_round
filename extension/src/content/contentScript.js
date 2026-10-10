@@ -1,5 +1,4 @@
-import type { TrackerConfig, Point, ClickableElement, TrackingMode, ExtensionMessage } from '../shared/types'
-import { DEFAULT_CONFIG, DWELL_TIME, CLICK_COOLDOWN } from '../shared/types'
+import { DEFAULT_CONFIG, DWELL_TIME, CLICK_COOLDOWN } from '../shared/types.js'
 import {
   CALIBRATION_POINTS,
   DWELL_DETECT_RADIUS,
@@ -11,14 +10,14 @@ import {
   SCROLL_ACCEL_MS,
   SCROLL_MIN_SPEED,
   SCROLL_MAX_SPEED,
-} from '../shared/constants'
-import { CoordinateMapper } from './tracker/CoordinateMapper'
-import { CursorOverlay } from './overlay/CursorOverlay'
-import { TargetHighlighter } from './overlay/TargetHighlighter'
-import { CalibrationOverlay } from './overlay/CalibrationOverlay'
-import { TabDock, type NudgeDirection, type TabDirection, type DockHit } from './overlay/TabDock'
-import { calibrationManager } from './calibration/CalibrationManager'
-import { targetDetector } from './overlay/TargetDetector'
+} from '../shared/constants.js'
+import { CoordinateMapper } from './tracker/CoordinateMapper.js'
+import { CursorOverlay } from './overlay/CursorOverlay.js'
+import { TargetHighlighter } from './overlay/TargetHighlighter.js'
+import { CalibrationOverlay } from './overlay/CalibrationOverlay.js'
+import { TabDock } from './overlay/TabDock.js'
+import { calibrationManager } from './calibration/CalibrationManager.js'
+import { targetDetector } from './overlay/TargetDetector.js'
 import {
   dispatchHover,
   resetHover,
@@ -27,55 +26,54 @@ import {
   dispatchDragMove,
   dispatchDragEnd,
   isSliderLike,
-} from './interaction/PointerInteractor'
-import { messagingBridge, loadConfig, saveConfig, getCalibration, saveCalibration } from './messaging/MessagingBridge'
-import { debugLog, debugEvery } from '../shared/debug'
+} from './interaction/PointerInteractor.js'
+import { messagingBridge, loadConfig, saveConfig, getCalibration, saveCalibration } from './messaging/MessagingBridge.js'
+import { debugLog, debugEvery } from '../shared/debug.js'
 
-let config: TrackerConfig = DEFAULT_CONFIG
-let coordinateMapper: CoordinateMapper | null = null
-let cursorOverlay: CursorOverlay | null = null
-let targetHighlighter: TargetHighlighter | null = null
-let calibrationOverlay: CalibrationOverlay | null = null
-let tabDock: TabDock | null = null
+let config = DEFAULT_CONFIG
+let coordinateMapper = null
+let cursorOverlay = null
+let targetHighlighter = null
+let calibrationOverlay = null
+let tabDock = null
 let lastClickTime = 0
-let currentDwellTarget: ClickableElement | null = null
-let lastRawPoint: Point | null = null
-let lastMappedPoint: Point | null = null
-let lastSnappedPoint: Point | null = null
-let lastDrawnPoint: Point | null = null
+let currentDwellTarget = null
+let lastRawPoint = null
+let lastMappedPoint = null
+let lastSnappedPoint = null
+let lastDrawnPoint = null
 let trackingEnabled = true
 
-let edgeScrollState: { dir: -1 | 1; holdingSince: number } | null = null
+let edgeScrollState = null
 
 let nudgeActive = false
 let nudgeDecelerating = false
-let nudgeDir: NudgeDirection = 'right'
-let nudgeOffset: Point = { x: 0, y: 0 }
+let nudgeDir = 'right'
+let nudgeOffset = { x: 0, y: 0 }
 let nudgeSpeed = 0
 let nudgeStart = 0
-let nudgeFrame: number | null = null
+let nudgeFrame = null
 
-type ScrollSource = { kind: 'edge'; dir: -1 | 1 } | { kind: 'element'; element: Element; dir: -1 | 1 }
 let scrollActive = false
-let scrollDir: -1 | 1 = 1
+let scrollDir = 1
 let scrollSpeed = 0
 let scrollStart = 0
-let scrollFrame: number | null = null
-let scrollSource: ScrollSource | null = null
+let scrollFrame = null
+let scrollSource = null
 
 let dragActive = false
-let dragTarget: ClickableElement | null = null
-let dragFrame: number | null = null
-let dragElement: Element | null = null
+let dragTarget = null
+let dragFrame = null
+let dragElement = null
 
 let lastHoverTime = 0
 let dockCooldownUntil = 0
 
 let recenterDeadline = 0
 
-let renderTarget: Point | null = null
-let renderCurrent: Point | null = null
-let renderFrame: number | null = null
+let renderTarget = null
+let renderCurrent = null
+let renderFrame = null
 
 let calibrationTargetIndex = -1
 let calibrationDwellStart = 0
@@ -137,27 +135,24 @@ async function init() {
   setupMessageHandlers()
 
   if (config.showWebcamPreview) {
-    // The on-page webcam preview is no longer supported: the camera now lives
-    // in the offscreen document. Clear the flag so the UI stays consistent.
     config.showWebcamPreview = false
     await saveConfig(config)
   }
 
   tabDock?.show()
 
-  // Register this tab with the background so it receives tracking results.
   chrome.runtime.sendMessage({ type: 'TAB_REGISTER' }, () => void chrome.runtime.lastError)
   debugLog('content', 'TAB_REGISTER sent')
 }
 
 function setupMessageHandlers() {
-  messagingBridge.onMessage('TRACKING_RESULT', (message: ExtensionMessage) => {
+  messagingBridge.onMessage('TRACKING_RESULT', (message) => {
     if (message.type === 'TRACKING_RESULT') {
       handleTrackingResult(message.rawPoint, message.confidence)
     }
   })
 
-  messagingBridge.onMessage('TOGGLE_TRACKING', (message: ExtensionMessage) => {
+  messagingBridge.onMessage('TOGGLE_TRACKING', (message) => {
     if (message.type === 'TOGGLE_TRACKING') {
       setEnabled(message.enabled)
       sendStatusUpdate()
@@ -169,26 +164,26 @@ function setupMessageHandlers() {
     sendStatusUpdate()
   })
 
-  messagingBridge.onMessage('SET_MODE', (message: ExtensionMessage) => {
+  messagingBridge.onMessage('SET_MODE', (message) => {
     if (message.type === 'SET_MODE') {
       void setMode(message.mode)
     }
   })
 
-  messagingBridge.onMessage('CONFIG_UPDATE', (message: ExtensionMessage) => {
+  messagingBridge.onMessage('CONFIG_UPDATE', (message) => {
     if (message.type === 'CONFIG_UPDATE') {
       void updateConfig(message.config)
       sendStatusUpdate()
     }
   })
 
-  messagingBridge.onMessage('START_CALIBRATION', (message: ExtensionMessage) => {
+  messagingBridge.onMessage('START_CALIBRATION', (message) => {
     if (message.type === 'START_CALIBRATION') {
       void startCalibration(message.mode)
     }
   })
 
-  messagingBridge.onMessage('CLEAR_CALIBRATION', (message: ExtensionMessage) => {
+  messagingBridge.onMessage('CLEAR_CALIBRATION', (message) => {
     if (message.type === 'CLEAR_CALIBRATION') {
       void clearCalibration(message.mode)
       sendStatusUpdate()
@@ -205,7 +200,7 @@ function sendStatusUpdate() {
   })
 }
 
-function handleTrackingResult(rawPoint: Point | null, _confidence: number) {
+function handleTrackingResult(rawPoint, _confidence) {
   debugEvery('content:result', 15, 'received', { hasPoint: rawPoint !== null })
 
   if (!rawPoint || !coordinateMapper) {
@@ -255,7 +250,7 @@ function handleTrackingResult(rawPoint: Point | null, _confidence: number) {
   updateInteraction(snappedPosition, mappedPoint)
 }
 
-function buildDockTarget(hit: DockHit): ClickableElement {
+function buildDockTarget(hit) {
   const rect = hit.rect
   return {
     element: hit.element,
@@ -269,7 +264,7 @@ function buildDockTarget(hit: DockHit): ClickableElement {
   }
 }
 
-function resolveTarget(position: Point): ClickableElement | null {
+function resolveTarget(position) {
   const overDock = tabDock?.isOverDock(position.x, position.y) ?? false
   if (overDock) {
     if (Date.now() < dockCooldownUntil) return null
@@ -290,11 +285,11 @@ function resolveTarget(position: Point): ClickableElement | null {
   return targetDetector.getTargetAtPoint(position.x, position.y, DWELL_DETECT_RADIUS)
 }
 
-function isDockTarget(target: ClickableElement): boolean {
+function isDockTarget(target) {
   return Boolean(target.element.closest?.('.handsfree-tab-dock'))
 }
 
-function updateInteraction(snappedPosition: Point, mappedPoint: Point) {
+function updateInteraction(snappedPosition, mappedPoint) {
   const target = resolveTarget(snappedPosition)
 
   if (currentDwellTarget) {
@@ -330,14 +325,14 @@ function updateInteraction(snappedPosition: Point, mappedPoint: Point) {
   updateEdgeScroll(mappedPoint, target)
 }
 
-function pulseHover(position: Point) {
+function pulseHover(position) {
   const now = Date.now()
   if (now - lastHoverTime < 90) return
   lastHoverTime = now
   dispatchHover(position.x, position.y)
 }
 
-function setCursorTarget(point: Point | null) {
+function setCursorTarget(point) {
   if (!point) {
     renderTarget = null
     renderCurrent = null
@@ -379,14 +374,14 @@ function renderTick() {
   renderFrame = requestAnimationFrame(renderTick)
 }
 
-function clampToViewport(point: Point): Point {
+function clampToViewport(point) {
   return {
     x: Math.max(2, Math.min(window.innerWidth - 2, point.x)),
     y: Math.max(2, Math.min(window.innerHeight - 2, point.y)),
   }
 }
 
-function sameLogicalTarget(a: ClickableElement, b: ClickableElement): boolean {
+function sameLogicalTarget(a, b) {
   return (
     a.element === b.element ||
     b.element.contains(a.element) ||
@@ -394,7 +389,7 @@ function sameLogicalTarget(a: ClickableElement, b: ClickableElement): boolean {
   )
 }
 
-function isNearTarget(target: ClickableElement, point: Point, margin: number): boolean {
+function isNearTarget(target, point, margin) {
   const r = target.rect
   return (
     point.x >= r.left - margin &&
@@ -404,7 +399,7 @@ function isNearTarget(target: ClickableElement, point: Point, margin: number): b
   )
 }
 
-function updateCalibration(mappedPoint: Point) {
+function updateCalibration(mappedPoint) {
   const calibrationPoint = CALIBRATION_POINTS[calibrationTargetIndex]
   if (!calibrationPoint) return
 
@@ -439,7 +434,7 @@ function captureCalibrationPoint() {
   }
 }
 
-function startDwell(target: ClickableElement) {
+function startDwell(target) {
   currentDwellTarget = target
   const dock = isDockTarget(target)
   cursorOverlay?.setDwellTime(dock ? DOCK_DWELL_MS : config.dwellTime)
@@ -466,7 +461,7 @@ function cancelDwell() {
   if (dragActive) endDrag()
 }
 
-function executeClick(target: ClickableElement) {
+function executeClick(target) {
   const dock = isDockTarget(target)
   const now = Date.now()
   if (!dock && now - lastClickTime < CLICK_COOLDOWN) return
@@ -479,11 +474,11 @@ function executeClick(target: ClickableElement) {
 
   const point = lastDrawnPoint || target.center
   dispatchClickSequence(target.element, point.x, point.y)
-  const element = target.element as HTMLElement
+  const element = target.element
   element.focus?.()
 }
 
-function startDrag(target: ClickableElement) {
+function startDrag(target) {
   dragActive = true
   dragTarget = target
   dragElement = target.element
@@ -519,7 +514,7 @@ function endDrag() {
   dragElement = null
 }
 
-function nudgeVector(dir: NudgeDirection): Point {
+function nudgeVector(dir) {
   switch (dir) {
     case 'up':
       return { x: 0, y: -1 }
@@ -532,7 +527,7 @@ function nudgeVector(dir: NudgeDirection): Point {
   }
 }
 
-function clampOffset(x: number, y: number): Point {
+function clampOffset(x, y) {
   const m = lastMappedPoint
   if (!m) return { x, y }
   return {
@@ -551,7 +546,7 @@ function updateNudgeCursor() {
   setCursorTarget(position)
 }
 
-function startNudge(dir: NudgeDirection) {
+function startNudge(dir) {
   if (nudgeActive && nudgeDir === dir) {
     stopNudge()
     return
@@ -632,7 +627,7 @@ function pauseNudge() {
   cursorOverlay?.hideStatus()
 }
 
-function startScrollDrive(dir: -1 | 1, source: ScrollSource) {
+function startScrollDrive(dir, source) {
   if (config.isCalibrating) return
   scrollActive = true
   scrollDir = dir
@@ -647,7 +642,7 @@ function startScrollDrive(dir: -1 | 1, source: ScrollSource) {
   }
 }
 
-function toggleScrollDrive(dir: -1 | 1, element: HTMLElement) {
+function toggleScrollDrive(dir, element) {
   if (scrollActive && scrollDir === dir) {
     stopScrollDrive()
     return
@@ -702,13 +697,13 @@ function stopScrollDrive() {
   debugLog('content', 'scroll:stop')
 }
 
-function sendTabCommand(dir: TabDirection) {
+function sendTabCommand(dir) {
   const type = dir < 0 ? 'CMD_PREV_TAB' : 'CMD_NEXT_TAB'
   chrome.runtime.sendMessage({ type, timestamp: Date.now() }, () => void chrome.runtime.lastError)
   debugLog('content', 'tab:switch', { dir })
 }
 
-function updateEdgeScroll(mappedPoint: Point, target: ClickableElement | null) {
+function updateEdgeScroll(mappedPoint, target) {
   if (
     !config.edgeScroll ||
     config.isCalibrating ||
@@ -724,7 +719,7 @@ function updateEdgeScroll(mappedPoint: Point, target: ClickableElement | null) {
   if (scrollActive) return
 
   const vh = window.innerHeight
-  let dir: -1 | 1 | 0 = 0
+  let dir = 0
   if (mappedPoint.y < vh * config.edgeScrollBand) {
     dir = -1
   } else if (mappedPoint.y > vh * (1 - config.edgeScrollBand)) {
@@ -746,7 +741,7 @@ function updateEdgeScroll(mappedPoint: Point, target: ClickableElement | null) {
   }
 }
 
-function setEnabled(enabled: boolean) {
+function setEnabled(enabled) {
   trackingEnabled = enabled
   if (!enabled) {
     cancelDwell()
@@ -798,7 +793,7 @@ function applyRecenter() {
   sendStatusUpdate()
 }
 
-async function setMode(mode: TrackingMode) {
+async function setMode(mode) {
   config.mode = mode
   await saveConfig(config)
 
@@ -814,7 +809,7 @@ async function setMode(mode: TrackingMode) {
   }
 }
 
-async function updateConfig(updates: Partial<TrackerConfig>) {
+async function updateConfig(updates) {
   updates = updates || {}
   config = { ...config, ...updates }
   await saveConfig(config)
@@ -830,7 +825,7 @@ async function updateConfig(updates: Partial<TrackerConfig>) {
   }
 }
 
-async function startCalibration(mode: TrackingMode) {
+async function startCalibration(mode) {
   config.mode = mode
   config.isCalibrating = true
   await saveConfig(config)
@@ -864,7 +859,7 @@ function cancelCalibration() {
   calibrationOverlay?.cancel()
 }
 
-async function clearCalibration(mode: TrackingMode) {
+async function clearCalibration(mode) {
   calibrationManager.clearCalibration(mode)
   await chrome.storage.sync.remove(mode === 'face' ? 'handsfree_calibration_face' : 'handsfree_calibration_hand')
   coordinateMapper?.clearCalibration()
@@ -879,5 +874,3 @@ if (document.readyState === 'loading') {
   initOverlay()
   void init()
 }
-
-export {}

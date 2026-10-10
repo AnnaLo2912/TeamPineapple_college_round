@@ -1,7 +1,6 @@
-import type { TrackingMode, Point } from '../shared/types'
-import { debugLog, debugEvery } from '../shared/debug'
+import { debugLog, debugEvery } from '../shared/debug.js'
 
-function isSupportedPage(url?: string): boolean {
+function isSupportedPage(url) {
   if (!url) return false
   return !url.startsWith('chrome://') &&
          !url.startsWith('edge://') &&
@@ -11,28 +10,28 @@ function isSupportedPage(url?: string): boolean {
 }
 
 // Tabs that currently have the content script loaded.
-const activeTabs = new Map<number, { url: string; lastSeen: number }>()
+const activeTabs = new Map()
 
-let activeTabId: number | null = null
+let activeTabId = null
 let trackingEnabled = true
-let currentMode: TrackingMode = 'face'
-let offscreenCreating: Promise<void> | null = null
+let currentMode = 'face'
+let offscreenCreating = null
 
 debugLog('background', 'service worker loaded')
 
-function registerTab(tabId: number, url: string) {
+function registerTab(tabId, url) {
   if (isSupportedPage(url)) {
     activeTabs.set(tabId, { url, lastSeen: Date.now() })
   }
 }
 
-function unregisterTab(tabId: number) {
+function unregisterTab(tabId) {
   activeTabs.delete(tabId)
 }
 
-function getActiveTabs(): number[] {
+function getActiveTabs() {
   const now = Date.now()
-  const tabs: number[] = []
+  const tabs = []
   activeTabs.forEach((info, tabId) => {
     if (now - info.lastSeen > 5 * 60 * 1000) {
       activeTabs.delete(tabId)
@@ -43,13 +42,13 @@ function getActiveTabs(): number[] {
   return tabs
 }
 
-function forwardToAllTabs(message: any) {
+function forwardToAllTabs(message) {
   getActiveTabs().forEach((tabId) => {
     chrome.tabs.sendMessage(tabId, message, () => void chrome.runtime.lastError)
   })
 }
 
-function forwardToActiveTab(message: any) {
+function forwardToActiveTab(message) {
   let tabId = activeTabId
   if (tabId == null || !activeTabs.has(tabId)) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -63,7 +62,7 @@ function forwardToActiveTab(message: any) {
   chrome.tabs.sendMessage(tabId, message, () => void chrome.runtime.lastError)
 }
 
-function switchTab(direction: -1 | 1) {
+function switchTab(direction) {
   chrome.tabs.query({ currentWindow: true }, (tabs) => {
     if (!tabs.length) return
     const sorted = tabs.slice().sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
@@ -84,11 +83,9 @@ function switchTab(direction: -1 | 1) {
 // Offscreen document management
 // ---------------------------------------------------------------------------
 
-async function hasOffscreenDocument(): Promise<boolean> {
+async function hasOffscreenDocument() {
   try {
-    const runtime = chrome.runtime as unknown as {
-      getContexts?: (filter: { contextTypes: string[] }) => Promise<unknown[]>
-    }
+    const runtime = chrome.runtime
     if (typeof runtime.getContexts === 'function') {
       const contexts = await runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] })
       return Array.isArray(contexts) && contexts.length > 0
@@ -99,17 +96,14 @@ async function hasOffscreenDocument(): Promise<boolean> {
   return false
 }
 
-async function ensureOffscreen(): Promise<void> {
+async function ensureOffscreen() {
   if (await hasOffscreenDocument()) return
   if (offscreenCreating) {
     await offscreenCreating
     return
   }
 
-  const offscreen = chrome.offscreen as unknown as {
-    createDocument: (options: { url: string; reasons: string[]; justification: string }) => Promise<void>
-    closeDocument: () => Promise<void>
-  }
+  const offscreen = chrome.offscreen
 
   debugLog('background', 'creating offscreen document')
   offscreenCreating = offscreen
@@ -118,7 +112,7 @@ async function ensureOffscreen(): Promise<void> {
       reasons: ['USER_MEDIA'],
       justification: 'Webcam-based head and hand tracking for accessible browsing',
     })
-    .catch((error: any) => {
+    .catch((error) => {
       const message = String(error?.message || error)
       if (!message.includes('single offscreen')) {
         console.error('Failed to create offscreen document:', message)
@@ -131,20 +125,20 @@ async function ensureOffscreen(): Promise<void> {
   await offscreenCreating
 }
 
-async function closeOffscreen(): Promise<void> {
+async function closeOffscreen() {
   try {
-    const offscreen = chrome.offscreen as unknown as { closeDocument: () => Promise<void> }
+    const offscreen = chrome.offscreen
     await offscreen.closeDocument()
   } catch {
     // Nothing to close.
   }
 }
 
-function sendToOffscreen(message: any) {
+function sendToOffscreen(message) {
   chrome.runtime.sendMessage({ ...message, target: 'offscreen' }, () => void chrome.runtime.lastError)
 }
 
-async function loadStoredMode(): Promise<TrackingMode> {
+async function loadStoredMode() {
   try {
     const result = await chrome.storage.sync.get('handsfree_config')
     const mode = result?.handsfree_config?.mode
@@ -168,7 +162,7 @@ async function stopTracking() {
   await closeOffscreen()
 }
 
-function setTrackingEnabled(enabled: boolean) {
+function setTrackingEnabled(enabled) {
   trackingEnabled = enabled
   if (enabled) {
     void startTracking()
@@ -230,7 +224,7 @@ chrome.commands.onCommand.addListener((command) => {
   }
 })
 
-let permissionTabId: number | null = null
+let permissionTabId = null
 let isOpeningPermissionTab = false
 
 function openPermissionTabSingle() {
@@ -290,7 +284,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Tracking results originate from the offscreen document.
   if (message.type === 'TRACKING_RESULT') {
-    const payload: Point | null = message.rawPoint
+    const payload = message.rawPoint
     debugEvery('background:track', 15, 'result', {
       hasPoint: payload !== null,
       confidence: message.confidence,
@@ -388,5 +382,3 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return false
 })
-
-export {}

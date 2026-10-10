@@ -1,20 +1,19 @@
-import type { TrackingMode, Point } from '../shared/types'
-import { DEFAULT_CONFIG } from '../shared/types'
-import { debugLog, debugEvery } from '../shared/debug'
-import { WebcamManager } from './WebcamManager'
-import { initFaceTracker, detectFaceLandmarks } from './FaceTracker'
-import { initHandTracker, detectHandLandmarks, isHandTrackerReady } from './HandTracker'
+import { DEFAULT_CONFIG } from '../shared/types.js'
+import { debugLog, debugEvery } from '../shared/debug.js'
+import { WebcamManager } from './WebcamManager.js'
+import { initFaceTracker, detectFaceLandmarks } from './FaceTracker.js'
+import { initHandTracker, detectHandLandmarks, isHandTrackerReady } from './HandTracker.js'
 
 const webcam = new WebcamManager(DEFAULT_CONFIG)
 
-let mode: TrackingMode = 'face'
+let mode = 'face'
 let running = false
 let starting = false
 let busy = false
 
 debugLog('offscreen', 'module loaded')
 
-function send(message: any) {
+function send(message) {
   try {
     chrome.runtime.sendMessage(message, () => void chrome.runtime.lastError)
   } catch {
@@ -24,7 +23,7 @@ function send(message: any) {
 
 let lastPermissionRequestTime = 0
 
-async function startTracking(): Promise<void> {
+async function startTracking() {
   if (running || starting) {
     debugLog('offscreen', 'startTracking skipped', { running, starting })
     return
@@ -60,17 +59,17 @@ async function startTracking(): Promise<void> {
   }
 }
 
-function stopTracking(): void {
+function stopTracking() {
   debugLog('offscreen', 'stopTracking')
   running = false
   webcam.stop()
 }
 
-async function processFrame(video: HTMLVideoElement, timestamp: number): Promise<void> {
+async function processFrame(video, timestamp) {
   if (!running || busy) return
   busy = true
   try {
-    let point: Point | null = null
+    let point = null
     let confidence = 0
 
     if (mode === 'hand' && isHandTrackerReady()) {
@@ -95,7 +94,7 @@ async function processFrame(video: HTMLVideoElement, timestamp: number): Promise
   }
 }
 
-async function setMode(next: TrackingMode): Promise<void> {
+async function setMode(next) {
   debugLog('offscreen', 'setMode', next)
   if (next === 'hand' && !isHandTrackerReady()) {
     await initHandTracker()
@@ -104,7 +103,7 @@ async function setMode(next: TrackingMode): Promise<void> {
   mode = next
 }
 
-chrome.runtime.onMessage.addListener((message: any) => {
+chrome.runtime.onMessage.addListener((message) => {
   if (!message || message.target !== 'offscreen') return
   debugLog('offscreen', 'command', message.type)
 
@@ -124,5 +123,3 @@ chrome.runtime.onMessage.addListener((message: any) => {
 // Tell the background we are ready to receive commands (avoids a startup race
 // where the service worker sends START before this listener is registered).
 send({ type: 'OFFSCREEN_READY' })
-
-export {}

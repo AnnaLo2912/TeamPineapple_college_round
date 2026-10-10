@@ -1,9 +1,8 @@
-import type { TrackingResult, Point } from '../shared/types'
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision'
 
-let faceLandmarker: any = null
+let faceLandmarker = null
 
-export async function initFaceTracker(): Promise<boolean> {
+export async function initFaceTracker() {
   if (faceLandmarker) return true
 
   const wasmPath = chrome.runtime.getURL('models/wasm/')
@@ -102,11 +101,11 @@ export async function initFaceTracker(): Promise<boolean> {
   }
 }
 
-export function isFaceTrackerReady(): boolean {
+export function isFaceTrackerReady() {
   return faceLandmarker !== null
 }
 
-export async function detectFaceLandmarks(video: HTMLVideoElement, timestamp: number): Promise<TrackingResult> {
+export async function detectFaceLandmarks(video, timestamp) {
   if (!faceLandmarker || video.readyState < 2) {
     return { cursorPoint: null, confidence: 0 }
   }
@@ -126,7 +125,7 @@ export async function detectFaceLandmarks(video: HTMLVideoElement, timestamp: nu
     const mouthTop = landmarks[13]
     const mouthBottom = landmarks[14]
 
-    const cursorPoint: Point = {
+    const cursorPoint = {
       x: nose.x,
       y: nose.y,
     }
@@ -135,7 +134,7 @@ export async function detectFaceLandmarks(video: HTMLVideoElement, timestamp: nu
     const mouthOpen = Math.hypot(mouthTop.x - mouthBottom.x, mouthTop.y - mouthBottom.y)
     const confidence = Math.min(1, eyeDist * 10)
 
-    const allLandmarks: Point[] = landmarks.map((l: any) => ({ x: l.x, y: l.y }))
+    const allLandmarks = landmarks.map((l) => ({ x: l.x, y: l.y }))
 
     return {
       cursorPoint,

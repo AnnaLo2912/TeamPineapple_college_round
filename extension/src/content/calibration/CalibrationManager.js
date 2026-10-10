@@ -1,5 +1,4 @@
-import type { CalibrationData, CalibrationPoint, Point, TrackingMode } from '../../shared/types'
-import { CALIBRATION_POINTS } from '../../shared/constants'
+import { CALIBRATION_POINTS } from '../../shared/constants.js'
 
 const STORAGE_KEYS = {
   CONFIG: 'handsfree_config',
@@ -8,19 +7,19 @@ const STORAGE_KEYS = {
 }
 
 export class CalibrationManager {
-  private calibrationData: Map<TrackingMode, CalibrationData> = new Map()
-  private currentMode: TrackingMode = 'face'
-  private collectedPoints: CalibrationPoint[] = []
-  private currentPointIndex: number = 0
-  private isCalibrating: boolean = false
-  private onProgressCallback: ((progress: { current: number; total: number; point: Point }) => void) | null = null
-  private onCompleteCallback: ((data: CalibrationData) => void) | null = null
-
   constructor() {
+    this.calibrationData = new Map()
+    this.currentMode = 'face'
+    this.collectedPoints = []
+    this.currentPointIndex = 0
+    this.isCalibrating = false
+    this.onProgressCallback = null
+    this.onCompleteCallback = null
+
     this.loadFromStorage()
   }
 
-  private async loadFromStorage() {
+  async loadFromStorage() {
     try {
       const faceCal = await chrome.storage.sync.get('handsfree_calibration_face')
       const handCal = await chrome.storage.sync.get('handsfree_calibration_hand')
@@ -29,7 +28,7 @@ export class CalibrationManager {
         const parsed = faceCal.handsfree_calibration_face
         this.calibrationData.set('face', {
           ...parsed,
-          points: parsed.points.map((p: any) => ({
+          points: parsed.points.map((p) => ({
             screen: p.screen,
             camera: p.camera,
           })),
@@ -40,7 +39,7 @@ export class CalibrationManager {
         const parsed = handCal.handsfree_calibration_hand
         this.calibrationData.set('hand', {
           ...parsed,
-          points: parsed.points.map((p: any) => ({
+          points: parsed.points.map((p) => ({
             screen: p.screen,
             camera: p.camera,
           })),
@@ -51,7 +50,7 @@ export class CalibrationManager {
     }
   }
 
-  private async saveToStorage() {
+  async saveToStorage() {
     try {
       const faceCal = this.calibrationData.get('face')
       const handCal = this.calibrationData.get('hand')
@@ -67,20 +66,16 @@ export class CalibrationManager {
     }
   }
 
-  getCalibration(mode: TrackingMode): CalibrationData | null {
+  getCalibration(mode) {
     return this.calibrationData.get(mode) || null
   }
 
-  hasCalibration(mode: TrackingMode): boolean {
+  hasCalibration(mode) {
     const data = this.calibrationData.get(mode)
     return data !== null && data.matrix !== null && data.points.length >= 4
   }
 
-  startCalibration(
-    mode: TrackingMode,
-    onProgress: (progress: { current: number; total: number; point: Point }) => void,
-    onComplete: (data: CalibrationData) => void
-  ): Point {
+  startCalibration(mode, onProgress, onComplete) {
     this.currentMode = mode
     this.collectedPoints = []
     this.currentPointIndex = 0
@@ -93,7 +88,7 @@ export class CalibrationManager {
     return point
   }
 
-  addCalibrationPoint(cameraPoint: Point): { done: boolean; nextPoint?: Point; progress?: { current: number; total: number; point: Point } } {
+  addCalibrationPoint(cameraPoint) {
     if (!this.isCalibrating || this.currentPointIndex >= CALIBRATION_POINTS.length) {
       return { done: true }
     }
@@ -117,10 +112,10 @@ export class CalibrationManager {
     return { done: false, nextPoint, progress }
   }
 
-  private finishCalibration() {
+  finishCalibration() {
     const matrix = this.computeMatrix(this.collectedPoints)
 
-    const data: CalibrationData = {
+    const data = {
       points: this.collectedPoints,
       matrix,
       mode: this.currentMode,
@@ -133,11 +128,11 @@ export class CalibrationManager {
     this.onCompleteCallback?.(data)
   }
 
-  private computeMatrix(points: CalibrationPoint[]): number[] | null {
+  computeMatrix(points) {
     if (points.length < 4) return null
 
-    const A: number[] = []
-    const B: number[] = []
+    const A = []
+    const B = []
 
     for (const p of points) {
       const cx = p.camera.x
@@ -157,7 +152,7 @@ export class CalibrationManager {
     }
   }
 
-  private solveLeastSquares(A: number[], B: number[], n: number): number[] {
+  solveLeastSquares(A, B, n) {
     const m = B.length
     const AT = new Array(n * m).fill(0)
     for (let i = 0; i < m; i++) {
@@ -189,7 +184,7 @@ export class CalibrationManager {
     return this.gaussianElimination(ATA, ATB, n)
   }
 
-  private gaussianElimination(A: number[], B: number[], n: number): number[] {
+  gaussianElimination(A, B, n) {
     const M = A.map((val, i) => [...A.slice(i * n, (i + 1) * n), B[i]])
 
     for (let i = 0; i < n; i++) {
@@ -226,7 +221,7 @@ export class CalibrationManager {
     this.currentPointIndex = 0
   }
 
-  clearCalibration(mode: TrackingMode) {
+  clearCalibration(mode) {
     this.calibrationData.delete(mode)
     this.saveToStorage()
   }
@@ -236,7 +231,7 @@ export class CalibrationManager {
     this.saveToStorage()
   }
 
-  recenter(cameraCenter: Point, mode: TrackingMode): CalibrationData | null {
+  recenter(cameraCenter, mode) {
     const existing = this.calibrationData.get(mode)
     if (!existing || !existing.matrix) return null
 
@@ -251,7 +246,7 @@ export class CalibrationManager {
     const matrix = this.computeMatrix(adjustedPoints)
     if (!matrix) return null
 
-    const updated: CalibrationData = {
+    const updated = {
       ...existing,
       points: adjustedPoints,
       matrix,
@@ -264,20 +259,20 @@ export class CalibrationManager {
     return updated
   }
 
-  getCalibrationPoints(): Point[] {
+  getCalibrationPoints() {
     return CALIBRATION_POINTS
   }
 
-  getCurrentProgress(): { current: number; total: number } | null {
+  getCurrentProgress() {
     if (!this.isCalibrating) return null
     return { current: this.currentPointIndex, total: CALIBRATION_POINTS.length }
   }
 
-  isCalibratingMode(): boolean {
+  isCalibratingMode() {
     return this.isCalibrating
   }
 
-  getCurrentMode(): TrackingMode {
+  getCurrentMode() {
     return this.currentMode
   }
 }

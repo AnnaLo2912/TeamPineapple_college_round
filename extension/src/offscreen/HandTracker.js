@@ -1,9 +1,8 @@
-import type { TrackingResult, Point } from '../shared/types'
 import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision'
 
-let handLandmarker: any = null
+let handLandmarker = null
 
-export async function initHandTracker(): Promise<boolean> {
+export async function initHandTracker() {
   if (handLandmarker) return true
 
   const wasmPath = chrome.runtime.getURL('models/wasm/')
@@ -94,11 +93,11 @@ export async function initHandTracker(): Promise<boolean> {
   }
 }
 
-export function isHandTrackerReady(): boolean {
+export function isHandTrackerReady() {
   return handLandmarker !== null
 }
 
-export async function detectHandLandmarks(video: HTMLVideoElement, timestamp: number): Promise<TrackingResult> {
+export async function detectHandLandmarks(video, timestamp) {
   if (!handLandmarker || video.readyState < 2) {
     return { cursorPoint: null, confidence: 0 }
   }
@@ -114,7 +113,7 @@ export async function detectHandLandmarks(video: HTMLVideoElement, timestamp: nu
     const indexTip = landmarks[8]
     const handedness = result.handedness[0]?.[0]?.categoryName || 'Right'
 
-    const cursorPoint: Point = {
+    const cursorPoint = {
       x: indexTip.x,
       y: indexTip.y,
     }
@@ -124,7 +123,7 @@ export async function detectHandLandmarks(video: HTMLVideoElement, timestamp: nu
     return {
       cursorPoint,
       confidence,
-      landmarks: landmarks.map((l: any) => ({ x: l.x, y: l.y })),
+      landmarks: landmarks.map((l) => ({ x: l.x, y: l.y })),
       rawLandmarks: { indexTip, handedness },
     }
   } catch (error) {

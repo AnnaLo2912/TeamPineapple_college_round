@@ -1,10 +1,6 @@
 const POINTER_ID = 1
 
-function eventInit(
-  x: number,
-  y: number,
-  extra: Record<string, unknown>
-): Record<string, unknown> {
+function eventInit(x, y, extra) {
   return {
     bubbles: true,
     cancelable: true,
@@ -18,30 +14,30 @@ function eventInit(
   }
 }
 
-function firePointer(type: string, x: number, y: number, buttons = 0) {
+function firePointer(type, x, y, buttons = 0) {
   const evt = new PointerEvent(type, {
-    ...(eventInit(x, y, {
+    ...eventInit(x, y, {
       pointerId: POINTER_ID,
       pointerType: 'mouse',
       isPrimary: true,
       buttons,
       button: buttons ? 0 : -1,
-    }) as PointerEventInit),
+    }),
   })
   return evt
 }
 
-function fireMouse(type: string, x: number, y: number, buttons = 0) {
+function fireMouse(type, x, y, buttons = 0) {
   const evt = new MouseEvent(type, {
-    ...(eventInit(x, y, {
+    ...eventInit(x, y, {
       button: buttons ? 0 : -1,
       buttons,
-    }) as MouseEventInit),
+    }),
   })
   return evt
 }
 
-const MOUSE_EVENTS: Record<string, string> = {
+const MOUSE_EVENTS = {
   pointerover: 'mouseover',
   pointerenter: 'mouseenter',
   pointerdown: 'mousedown',
@@ -49,17 +45,17 @@ const MOUSE_EVENTS: Record<string, string> = {
   pointermove: 'mousemove',
 }
 
-function targetFor(x: number, y: number): Element | null {
+function targetFor(x, y) {
   return document.elementFromPoint(x, y)
 }
 
-function isOverlay(el: Element): boolean {
+function isOverlay(el) {
   return Boolean(el.closest('[class*="handsfree-"]'))
 }
 
-let lastHovered: Element | null = null
+let lastHovered = null
 
-function dispatchLeave(el: Element, x: number, y: number) {
+function dispatchLeave(el, x, y) {
   el.dispatchEvent(firePointer('pointerout', x, y))
   el.dispatchEvent(fireMouse('mouseout', x, y))
   el.dispatchEvent(firePointer('pointerleave', x, y))
@@ -73,18 +69,18 @@ export function resetHover() {
   lastHovered = null
 }
 
-export function isSliderLike(el: Element | null): boolean {
+export function isSliderLike(el) {
   if (!el) return false
   const tag = el.tagName?.toLowerCase()
   if (!tag) return false
-  if (tag === 'input' && (el as HTMLInputElement).type === 'range') return true
+  if (tag === 'input' && el.type === 'range') return true
   if (el.getAttribute('role') === 'slider') return true
   const cls = typeof el.className === 'string' ? el.className.toLowerCase() : ''
   if (/(ytp-progress-bar|ytp-volume-slider|scrubber|slider|range)/.test(cls)) return true
   return false
 }
 
-export function dispatchHover(x: number, y: number, el: Element | null = null) {
+export function dispatchHover(x, y, el = null) {
   const target = el || targetFor(x, y)
 
   if (!target || isOverlay(target)) {
@@ -105,7 +101,7 @@ export function dispatchHover(x: number, y: number, el: Element | null = null) {
   target.dispatchEvent(fireMouse('mousemove', x, y))
 }
 
-export function dispatchDragStart(el: Element, x: number, y: number) {
+export function dispatchDragStart(el, x, y) {
   for (const type of ['pointerover', 'pointerenter', 'pointerdown', 'mousemove', 'mousedown']) {
     const evt = MOUSE_EVENTS[type]
       ? [firePointer(type, x, y, 1), fireMouse(MOUSE_EVENTS[type], x, y, 1)]
@@ -114,20 +110,20 @@ export function dispatchDragStart(el: Element, x: number, y: number) {
   }
 }
 
-export function dispatchDragMove(x: number, y: number, el: Element | null = null) {
+export function dispatchDragMove(x, y, el = null) {
   const target = el || targetFor(x, y)
   if (!target) return
   target.dispatchEvent(firePointer('pointermove', x, y, 1))
   target.dispatchEvent(fireMouse('mousemove', x, y, 1))
 }
 
-export function dispatchDragEnd(el: Element, x: number, y: number) {
+export function dispatchDragEnd(el, x, y) {
   el.dispatchEvent(firePointer('pointerup', x, y, 0))
   el.dispatchEvent(fireMouse('mouseup', x, y, 0))
 }
 
-export function dispatchClickSequence(el: Element, x: number, y: number) {
-  const sequence: string[] = [
+export function dispatchClickSequence(el, x, y) {
+  const sequence = [
     'pointerover',
     'pointerenter',
     'pointermove',
@@ -144,7 +140,7 @@ export function dispatchClickSequence(el: Element, x: number, y: number) {
   el.dispatchEvent(fireMouse('mouseup', x, y, 0))
   el.dispatchEvent(
     new MouseEvent('click', {
-      ...(eventInit(x, y, { button: 0, buttons: 0, detail: 1 }) as MouseEventInit),
+      ...eventInit(x, y, { button: 0, buttons: 0, detail: 1 }),
     })
   )
 

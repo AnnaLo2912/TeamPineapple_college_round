@@ -15,7 +15,7 @@ export const CLICKABLE_SELECTORS = [
 
 export const EXCLUDED_TAGS = ['SCRIPT', 'STYLE', 'META', 'LINK', 'NOSCRIPT']
 
-export const CALIBRATION_POINTS: { x: number; y: number }[] = [
+export const CALIBRATION_POINTS = [
   { x: 0.1, y: 0.1 },
   { x: 0.9, y: 0.1 },
   { x: 0.9, y: 0.9 },

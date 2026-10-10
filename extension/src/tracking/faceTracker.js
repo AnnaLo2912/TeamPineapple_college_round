@@ -1,10 +1,8 @@
-import type { TrackingResult, Point, LandmarkData } from './types'
-
 const FACE_LANDMARKER_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm/face_landmarker.task'
 const VISION_WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm/'
 
-let faceLandmarker: any = null
-let visionModule: any = null
+let faceLandmarker = null
+let visionModule = null
 
 async function loadVisionModule() {
   if (visionModule) return visionModule
@@ -13,7 +11,7 @@ async function loadVisionModule() {
   return module
 }
 
-export async function initFaceTracker(): Promise<boolean> {
+export async function initFaceTracker() {
   try {
     const { FaceLandmarker, FilesetResolver } = await loadVisionModule()
     
@@ -40,11 +38,11 @@ export async function initFaceTracker(): Promise<boolean> {
   }
 }
 
-export function isFaceTrackerReady(): boolean {
+export function isFaceTrackerReady() {
   return faceLandmarker !== null
 }
 
-export async function detectFaceLandmarks(video: HTMLVideoElement, timestamp: number): Promise<TrackingResult> {
+export async function detectFaceLandmarks(video, timestamp) {
   if (!faceLandmarker || video.readyState < 2) {
     return { cursorPoint: null, confidence: 0 }
   }
@@ -64,7 +62,7 @@ export async function detectFaceLandmarks(video: HTMLVideoElement, timestamp: nu
     const mouthTop = landmarks[13]  // Upper lip
     const mouthBottom = landmarks[14]  // Lower lip
 
-    const cursorPoint: Point = {
+    const cursorPoint = {
       x: nose.x,
       y: nose.y,
     }
@@ -73,7 +71,7 @@ export async function detectFaceLandmarks(video: HTMLVideoElement, timestamp: nu
     const mouthOpen = Math.hypot(mouthTop.x - mouthBottom.x, mouthTop.y - mouthBottom.y)
     const confidence = Math.min(1, eyeDist * 10)  // Rough confidence based on eye separation
 
-    const allLandmarks: Point[] = landmarks.map((l: any) => ({ x: l.x, y: l.y }))
+    const allLandmarks = landmarks.map((l) => ({ x: l.x, y: l.y }))
 
     return {
       cursorPoint,

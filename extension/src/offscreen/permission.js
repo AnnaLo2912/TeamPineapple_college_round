@@ -1,7 +1,7 @@
-const msg = document.getElementById('msg') as HTMLParagraphElement
-const retry = document.getElementById('retry') as HTMLButtonElement
+const msg = document.getElementById('msg')
+const retry = document.getElementById('retry')
 
-async function requestCamera(): Promise<void> {
+async function requestCamera() {
   retry.style.display = 'none'
   msg.textContent = 'Requesting camera permission…'
 

@@ -1,23 +1,21 @@
-import type { ClickableElement } from '../../shared/types'
 import {
   CLICKABLE_SELECTORS,
   EXCLUDED_TAGS,
   DWELL_DETECT_RADIUS,
   DWELL_MIN_HITBOX,
-} from '../../shared/constants'
+} from '../../shared/constants.js'
 
 export class TargetDetector {
-  private cachedTargets: ClickableElement[] = []
-  private lastCacheTime: number = 0
-  private cacheTimeout: number = 200
-  private observer: MutationObserver | null = null
-  private onTargetsChangeCallback: ((targets: ClickableElement[]) => void) | null = null
-
   constructor() {
+    this.cachedTargets = []
+    this.lastCacheTime = 0
+    this.cacheTimeout = 200
+    this.observer = null
+    this.onTargetsChangeCallback = null
     this.setupObserver()
   }
 
-  private setupObserver() {
+  setupObserver() {
     this.observer = new MutationObserver(() => {
       this.invalidateCache()
     })
@@ -33,7 +31,7 @@ export class TargetDetector {
     this.lastCacheTime = 0
   }
 
-  getTargets(forceRefresh = false): ClickableElement[] {
+  getTargets(forceRefresh = false) {
     const now = Date.now()
     if (!forceRefresh && this.cachedTargets.length > 0 && now - this.lastCacheTime < this.cacheTimeout) {
       return this.cachedTargets
@@ -49,10 +47,10 @@ export class TargetDetector {
     return this.cachedTargets
   }
 
-  private scanTargets(): ClickableElement[] {
+  scanTargets() {
     const selector = CLICKABLE_SELECTORS.join(', ')
-    const elements = document.querySelectorAll<HTMLElement>(selector)
-    const targets: ClickableElement[] = []
+    const elements = document.querySelectorAll(selector)
+    const targets = []
 
     elements.forEach(el => {
       if (EXCLUDED_TAGS.includes(el.tagName)) return
@@ -88,20 +86,16 @@ export class TargetDetector {
     return targets
   }
 
-  private getInflate(target: ClickableElement): number {
+  getInflate(target) {
     const minSide = Math.min(target.rect.width, target.rect.height)
     return Math.max(0, (DWELL_MIN_HITBOX - minSide) / 2)
   }
 
-  getTargetAtPoint(
-    x: number,
-    y: number,
-    radius: number = DWELL_DETECT_RADIUS
-  ): ClickableElement | null {
+  getTargetAtPoint(x, y, radius = DWELL_DETECT_RADIUS) {
     const targets = this.getTargets()
-    let insideBest: ClickableElement | null = null
+    let insideBest = null
     let insideArea = Infinity
-    let nearBest: ClickableElement | null = null
+    let nearBest = null
     let nearDistance = Infinity
 
     for (const target of targets) {
@@ -131,9 +125,9 @@ export class TargetDetector {
     return insideBest ?? nearBest
   }
 
-  getMagneticTarget(x: number, y: number, magneticRadius: number = 64): ClickableElement | null {
+  getMagneticTarget(x, y, magneticRadius = 64) {
     const targets = this.getTargets()
-    let bestTarget: ClickableElement | null = null
+    let bestTarget = null
     let bestDistance = Infinity
 
     for (const target of targets) {
@@ -156,7 +150,7 @@ export class TargetDetector {
     return bestTarget
   }
 
-  applyMagneticSnap(cursorX: number, cursorY: number, magneticRadius: number, snapStrength: number): { x: number; y: number } | null {
+  applyMagneticSnap(cursorX, cursorY, magneticRadius, snapStrength) {
     const target = this.getMagneticTarget(cursorX, cursorY, magneticRadius)
     if (!target) return null
 
@@ -183,7 +177,7 @@ export class TargetDetector {
     }
   }
 
-  onTargetsChange(callback: (targets: ClickableElement[]) => void) {
+  onTargetsChange(callback) {
     this.onTargetsChangeCallback = callback
   }
 

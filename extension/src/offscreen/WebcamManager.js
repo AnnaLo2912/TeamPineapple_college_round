@@ -1,20 +1,17 @@
-import type { TrackerConfig } from '../shared/types'
-import { debugLog, debugEvery } from '../shared/debug'
+import { debugLog, debugEvery } from '../shared/debug.js'
 
 export class WebcamManager {
-  private stream: MediaStream | null = null
-  private video: HTMLVideoElement | null = null
-  private config: TrackerConfig
-  private onFrameCallback: ((video: HTMLVideoElement, timestamp: number) => void) | null = null
-  private loopId: ReturnType<typeof setInterval> | null = null
-  private isRunning: boolean = false
-  private ownsVideo: boolean = false
-
-  constructor(config: TrackerConfig) {
+  constructor(config) {
+    this.stream = null
+    this.video = null
     this.config = config
+    this.onFrameCallback = null
+    this.loopId = null
+    this.isRunning = false
+    this.ownsVideo = false
   }
 
-  async start(videoElement?: HTMLVideoElement): Promise<HTMLVideoElement> {
+  async start(videoElement) {
     if (this.isRunning && this.video) {
       return this.video
     }
@@ -44,14 +41,14 @@ export class WebcamManager {
         this.ownsVideo = true
       }
 
-      await new Promise<void>((resolve, reject) => {
+      await new Promise((resolve, reject) => {
         if (!this.video) return reject(new Error('No video element'))
         this.video.onloadedmetadata = () => {
           debugLog('webcam', 'video metadata', {
-            w: this.video!.videoWidth,
-            h: this.video!.videoHeight,
+            w: this.video.videoWidth,
+            h: this.video.videoHeight,
           })
-          this.video!.play().then(resolve).catch((err) => {
+          this.video.play().then(resolve).catch((err) => {
             debugLog('webcam', 'video.play() rejected', err)
             reject(err)
           })
@@ -88,7 +85,7 @@ export class WebcamManager {
     debugLog('webcam', 'stopped')
   }
 
-  private startFrameLoop() {
+  startFrameLoop() {
     this.stopFrameLoop()
     // Offscreen documents are hidden, so requestAnimationFrame is throttled/
     // paused there. A plain interval keeps the detection loop running.
@@ -106,26 +103,26 @@ export class WebcamManager {
     }, 1000 / 30)
   }
 
-  private stopFrameLoop() {
+  stopFrameLoop() {
     if (this.loopId !== null) {
       clearInterval(this.loopId)
       this.loopId = null
     }
   }
 
-  onFrame(callback: (video: HTMLVideoElement, timestamp: number) => void) {
+  onFrame(callback) {
     this.onFrameCallback = callback
   }
 
-  getVideoElement(): HTMLVideoElement | null {
+  getVideoElement() {
     return this.video
   }
 
-  isActive(): boolean {
+  isActive() {
     return this.isRunning && this.video !== null && this.video.readyState >= 2
   }
 
-  updateConfig(config: Partial<TrackerConfig>) {
+  updateConfig(config) {
     this.config = { ...this.config, ...config }
   }
 }

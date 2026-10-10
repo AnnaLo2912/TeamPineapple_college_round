@@ -19,7 +19,7 @@ export default defineConfig({
         popup: 'src/popup/popup.html',
         offscreen: 'src/offscreen/offscreen.html',
         permission: 'src/offscreen/permission.html',
-        background: 'src/background/serviceWorker.ts',
+        background: 'src/background/serviceWorker.js',
       },
       output: {
         entryFileNames: '[name].js',

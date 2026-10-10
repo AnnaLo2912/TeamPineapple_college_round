@@ -1,26 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { TrackerConfig } from '../shared/types'
-import { STORAGE_KEYS } from '../shared/constants'
+import { STORAGE_KEYS } from '../shared/constants.js'
 
-interface PopupState {
-  isEnabled: boolean
-  mode: 'face' | 'hand'
-  sensitivity: number
-  smoothing: number
-  deadZone: number
-  dwellTime: number
-  edgeScroll: boolean
-  snapStrength: number
-  magneticRadius: number
-  padSpeed: number
-  hasFaceCalibration: boolean
-  hasHandCalibration: boolean
-  unsupportedPage: boolean
-}
-
-const Popup: React.FC = () => {
-  const [state, setState] = useState<PopupState>({
+const Popup = () => {
+  const [state, setState] = useState({
     isEnabled: true,
     mode: 'face',
     sensitivity: 2.2,
@@ -42,7 +25,6 @@ const Popup: React.FC = () => {
       const faceCal = await getCalibration('face')
       const handCal = await getCalibration('hand')
 
-      // Check if current page supports content scripts
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const tab = tabs[0]
         const unsupported = Boolean(!tab?.id ||
@@ -80,8 +62,7 @@ const Popup: React.FC = () => {
       }))
     })
 
-    // Listen for status updates from background
-    const handleStatusUpdate = (message: any) => {
+    const handleStatusUpdate = (message) => {
       if (message.type === 'STATUS_UPDATE') {
         setState(prev => ({
           ...prev,
@@ -97,11 +78,11 @@ const Popup: React.FC = () => {
     }
   }, [])
 
-  const sendMessage = (type: string, payload?: any) => {
+  const sendMessage = (type, payload) => {
     chrome.runtime.sendMessage({ type, ...payload })
   }
 
-  const updateConfig = async (updates: Partial<TrackerConfig>) => {
+  const updateConfig = async (updates) => {
     const config = await loadConfig()
     const newConfig = { ...config, ...updates }
     await saveConfig(newConfig)
@@ -117,7 +98,7 @@ const Popup: React.FC = () => {
     })
   }
 
-  const changeMode = async (newMode: 'face' | 'hand') => {
+  const changeMode = async (newMode) => {
     await updateConfig({ mode: newMode })
     sendMessage('SET_MODE', { mode: newMode })
     const cal = await getCalibration(newMode)
@@ -133,12 +114,12 @@ const Popup: React.FC = () => {
     sendMessage('RECENTER')
   }
 
-  const handleCalibrate = (mode: 'face' | 'hand') => {
+  const handleCalibrate = (mode) => {
     sendMessage('START_CALIBRATION', { mode })
     window.close()
   }
 
-  const handleClearCalibration = async (mode: 'face' | 'hand') => {
+  const handleClearCalibration = async (mode) => {
     const key = mode === 'face' ? STORAGE_KEYS.CALIBRATION_FACE : STORAGE_KEYS.CALIBRATION_HAND
     await chrome.storage.sync.remove(key)
     setState(prev => ({
@@ -419,7 +400,7 @@ const Popup: React.FC = () => {
   )
 }
 
-async function loadConfig(): Promise<TrackerConfig> {
+async function loadConfig() {
   try {
     const result = await chrome.storage.sync.get(STORAGE_KEYS.CONFIG)
     if (result[STORAGE_KEYS.CONFIG]) {
@@ -431,7 +412,7 @@ async function loadConfig(): Promise<TrackerConfig> {
   return DEFAULT_CONFIG
 }
 
-async function saveConfig(config: TrackerConfig): Promise<void> {
+async function saveConfig(config) {
   try {
     await chrome.storage.sync.set({ [STORAGE_KEYS.CONFIG]: config })
   } catch (e) {
@@ -439,7 +420,7 @@ async function saveConfig(config: TrackerConfig): Promise<void> {
   }
 }
 
-async function getCalibration(mode: 'face' | 'hand'): Promise<any> {
+async function getCalibration(mode) {
   try {
     const key = mode === 'face' ? STORAGE_KEYS.CALIBRATION_FACE : STORAGE_KEYS.CALIBRATION_HAND
     const result = await chrome.storage.sync.get(key)
@@ -449,7 +430,7 @@ async function getCalibration(mode: 'face' | 'hand'): Promise<any> {
   }
 }
 
-const DEFAULT_CONFIG: TrackerConfig = {
+const DEFAULT_CONFIG = {
   mode: 'face',
   sensitivity: 2.2,
   deadZone: 0.01,
@@ -463,7 +444,7 @@ const DEFAULT_CONFIG: TrackerConfig = {
   padSpeed: 22,
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles = {
   container: {
     width: 300,
     minHeight: 400,
@@ -695,7 +676,7 @@ const styles: Record<string, React.CSSProperties> = {
 }
 
 function mountPopup() {
-  const root = createRoot(document.getElementById('root')!)
+  const root = createRoot(document.getElementById('root'))
   root.render(<Popup />)
 }
 

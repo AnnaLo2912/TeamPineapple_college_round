@@ -1,8 +1,7 @@
-import type { ExtensionMessage, TrackerConfig, TrackingMode, CalibrationData, Point } from '../../shared/types'
-import { DEFAULT_CONFIG } from '../../shared/types'
-import { STORAGE_KEYS } from '../../shared/constants'
+import { DEFAULT_CONFIG } from '../../shared/types.js'
+import { STORAGE_KEYS } from '../../shared/constants.js'
 
-function isSupportedPage(url?: string): boolean {
+function isSupportedPage(url) {
   if (!url) return false
   return !url.startsWith('chrome://') &&
          !url.startsWith('edge://') &&
@@ -12,11 +11,11 @@ function isSupportedPage(url?: string): boolean {
 }
 
 export class MessagingBridge {
-  private messageHandlers: Map<string, (message: ExtensionMessage) => void> = new Map()
-  private pendingRequests: Map<number, (response: any) => void> = new Map()
-  private requestId: number = 0
-
   constructor() {
+    this.messageHandlers = new Map()
+    this.pendingRequests = new Map()
+    this.requestId = 0
+
     // Content scripts receive messages from the background via chrome.runtime.onMessage
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       this.handleMessage(message, sender, sendResponse)
@@ -24,7 +23,7 @@ export class MessagingBridge {
     })
   }
 
-  private handleMessage(message: ExtensionMessage, sender: chrome.runtime.MessageSender, sendResponse: (response: any) => void) {
+  handleMessage(message, sender, sendResponse) {
     const handler = this.messageHandlers.get(message.type)
     if (handler) {
       handler(message)
@@ -36,11 +35,11 @@ export class MessagingBridge {
     }
   }
 
-  onMessage(type: string, handler: (message: ExtensionMessage) => void) {
+  onMessage(type, handler) {
     this.messageHandlers.set(type, handler)
   }
 
-  sendToBackground(message: ExtensionMessage): Promise<any> {
+  sendToBackground(message) {
     return new Promise((resolve) => {
       const id = ++this.requestId
       this.pendingRequests.set(id, resolve)
@@ -52,7 +51,7 @@ export class MessagingBridge {
     })
   }
 
-  broadcastToContent(message: ExtensionMessage) {
+  broadcastToContent(message) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tab = tabs[0]
       if (!tab?.id || !isSupportedPage(tab.url)) return
@@ -65,7 +64,7 @@ export class MessagingBridge {
     })
   }
 
-  async sendToActiveTab(message: ExtensionMessage): Promise<void> {
+  async sendToActiveTab(message) {
     return new Promise((resolve) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const tab = tabs[0]
@@ -87,7 +86,7 @@ export class MessagingBridge {
 
 export const messagingBridge = new MessagingBridge()
 
-export async function loadConfig(): Promise<TrackerConfig> {
+export async function loadConfig() {
   try {
     const result = await chrome.storage.sync.get(STORAGE_KEYS.CONFIG)
     if (result[STORAGE_KEYS.CONFIG]) {
@@ -99,7 +98,7 @@ export async function loadConfig(): Promise<TrackerConfig> {
   return DEFAULT_CONFIG
 }
 
-export async function saveConfig(config: TrackerConfig): Promise<void> {
+export async function saveConfig(config) {
   try {
     await chrome.storage.sync.set({ [STORAGE_KEYS.CONFIG]: config })
   } catch (e) {
@@ -107,7 +106,7 @@ export async function saveConfig(config: TrackerConfig): Promise<void> {
   }
 }
 
-export async function getCalibration(mode: TrackingMode): Promise<CalibrationData | null> {
+export async function getCalibration(mode) {
   try {
     const key = mode === 'face' ? STORAGE_KEYS.CALIBRATION_FACE : STORAGE_KEYS.CALIBRATION_HAND
     const result = await chrome.storage.sync.get(key)
@@ -117,7 +116,7 @@ export async function getCalibration(mode: TrackingMode): Promise<CalibrationDat
   }
 }
 
-export async function saveCalibration(mode: TrackingMode, data: CalibrationData): Promise<void> {
+export async function saveCalibration(mode, data) {
   try {
     const key = mode === 'face' ? STORAGE_KEYS.CALIBRATION_FACE : STORAGE_KEYS.CALIBRATION_HAND
     await chrome.storage.sync.set({ [key]: data })

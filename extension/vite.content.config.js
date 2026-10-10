@@ -9,7 +9,7 @@ export default defineConfig({
     sourcemap: true,
     minify: 'terser',
     lib: {
-      entry: 'src/content/contentScript.ts',
+      entry: 'src/content/contentScript.js',
       name: 'HandsfreeContent',
       formats: ['iife'],
       fileName: () => 'content.js',

@@ -1,27 +1,22 @@
-import type { TrackingMode, TrackingResult, TrackerConfig, Point } from './types'
-import { initFaceTracker, detectFaceLandmarks, disposeFaceTracker, isFaceTrackerReady } from './faceTracker'
-import { CoordinateMapper } from './coordinateMapper'
-import { WebcamManager } from './webcamManager'
+import { initFaceTracker, detectFaceLandmarks, disposeFaceTracker, isFaceTrackerReady } from './faceTracker.js'
+import { CoordinateMapper } from './coordinateMapper.js'
+import { WebcamManager } from './webcamManager.js'
 
-let handTrackerModule: any = null
+let handTrackerModule = null
 
 export class TrackingManager {
-  private config: TrackerConfig
-  private coordinateMapper: CoordinateMapper
-  private webcamManager: WebcamManager
-  private mode: TrackingMode = 'face'
-  private isInitialized: boolean = false
-  private isRunning: boolean = false
-  private lastResult: TrackingResult = { cursorPoint: null, confidence: 0 }
-  private onUpdateCallback: ((result: TrackingResult, mappedPoint: Point | null) => void) | null = null
-
-  constructor(config: TrackerConfig) {
+  constructor(config) {
     this.config = config
     this.coordinateMapper = new CoordinateMapper(config)
     this.webcamManager = new WebcamManager(config)
+    this.mode = 'face'
+    this.isInitialized = false
+    this.isRunning = false
+    this.lastResult = { cursorPoint: null, confidence: 0 }
+    this.onUpdateCallback = null
   }
 
-  async initialize(): Promise<boolean> {
+  async initialize() {
     if (this.isInitialized) return true
 
     const faceReady = await initFaceTracker()
@@ -34,7 +29,7 @@ export class TrackingManager {
     return true
   }
 
-  async start(): Promise<void> {
+  async start() {
     if (this.isRunning) return
     if (!this.isInitialized) {
       await this.initialize()
@@ -51,8 +46,8 @@ export class TrackingManager {
     this.coordinateMapper.resetSmoothing()
   }
 
-  private async processFrame(video: HTMLVideoElement, timestamp: number) {
-    let result: TrackingResult
+  async processFrame(video, timestamp) {
+    let result
 
     if (this.mode === 'face') {
       result = await detectFaceLandmarks(video, timestamp)
@@ -64,7 +59,7 @@ export class TrackingManager {
 
     this.lastResult = result
 
-    let mappedPoint: Point | null = null
+    let mappedPoint = null
     if (result.cursorPoint) {
       const smoothed = this.coordinateMapper.smoothPoint(result.cursorPoint)
       mappedPoint = this.coordinateMapper.mapPoint(smoothed)
@@ -75,7 +70,7 @@ export class TrackingManager {
     }
   }
 
-  private async detectHandLandmarks(video: HTMLVideoElement, timestamp: number): Promise<TrackingResult> {
+  async detectHandLandmarks(video, timestamp) {
     if (!handTrackerModule) {
       await this.loadHandTracker()
     }
@@ -94,7 +89,7 @@ export class TrackingManager {
       const indexTip = landmarks[8]
       const handedness = result.handedness[0]?.[0]?.categoryName || 'Right'
 
-      const cursorPoint: Point = {
+      const cursorPoint = {
         x: indexTip.x,
         y: indexTip.y,
       }
@@ -104,7 +99,7 @@ export class TrackingManager {
       return {
         cursorPoint,
         confidence,
-        landmarks: landmarks.map((l: any) => ({ x: l.x, y: l.y })),
+        landmarks: landmarks.map((l) => ({ x: l.x, y: l.y })),
         rawLandmarks: { indexTip, handedness },
       }
     } catch (error) {
@@ -113,7 +108,7 @@ export class TrackingManager {
     }
   }
 
-  private async loadHandTracker(): Promise<void> {
+  async loadHandTracker() {
     if (handTrackerModule) return
 
     try {
@@ -140,51 +135,51 @@ export class TrackingManager {
     }
   }
 
-  setMode(mode: TrackingMode) {
+  setMode(mode) {
     if (mode === this.mode) return
     this.mode = mode
     this.coordinateMapper.resetSmoothing()
   }
 
-  getMode(): TrackingMode {
+  getMode() {
     return this.mode
   }
 
-  async toggleMode(): Promise<TrackingMode> {
-    const modes: TrackingMode[] = ['face', 'hand']
+  async toggleMode() {
+    const modes = ['face', 'hand']
     const currentIndex = modes.indexOf(this.mode)
     const nextMode = modes[(currentIndex + 1) % modes.length]
     this.setMode(nextMode)
     return nextMode
   }
 
-  onUpdate(callback: (result: TrackingResult, mappedPoint: Point | null) => void) {
+  onUpdate(callback) {
     this.onUpdateCallback = callback
   }
 
-  setConfig(config: Partial<TrackerConfig>) {
+  setConfig(config) {
     this.config = { ...this.config, ...config }
     this.coordinateMapper.setConfig(config)
     this.webcamManager.updateConfig(config)
   }
 
-  getConfig(): TrackerConfig {
+  getConfig() {
     return { ...this.config }
   }
 
-  getCoordinateMapper(): CoordinateMapper {
+  getCoordinateMapper() {
     return this.coordinateMapper
   }
 
-  getWebcamManager(): WebcamManager {
+  getWebcamManager() {
     return this.webcamManager
   }
 
-  getLastResult(): TrackingResult {
+  getLastResult() {
     return { ...this.lastResult }
   }
 
-  isTracking(): boolean {
+  isTracking() {
     return this.isRunning
   }
 

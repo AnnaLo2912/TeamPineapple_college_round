@@ -1,22 +1,22 @@
-import { CALIBRATION_POINTS, TARGET_SIZE, PULSE_DURATION } from '../../shared/constants'
+import { CALIBRATION_POINTS, TARGET_SIZE, PULSE_DURATION } from '../../shared/constants.js'
 
 export class CalibrationOverlay {
-  private container: HTMLElement | null = null
-  private targetElements: HTMLElement[] = []
-  private progressContainer: HTMLElement | null = null
-  private currentPointIndex: number = 0
-  private progress: { current: number; total: number } = { current: 0, total: 5 }
-  private pulsePhase: number = 0
-  private animationId: number | null = null
-  private onCancelCallback: (() => void) | null = null
-  private onCompleteCallback: (() => void) | null = null
-  private titleElement: HTMLElement | null = null
-
   constructor() {
+    this.container = null
+    this.targetElements = []
+    this.progressContainer = null
+    this.currentPointIndex = 0
+    this.progress = { current: 0, total: 5 }
+    this.pulsePhase = 0
+    this.animationId = null
+    this.onCancelCallback = null
+    this.onCompleteCallback = null
+    this.titleElement = null
+
     this.createOverlay()
   }
 
-  private createOverlay() {
+  createOverlay() {
     this.container = document.createElement('div')
     this.container.className = 'handsfree-calibration-overlay'
     this.container.style.cssText = `
@@ -122,18 +122,18 @@ export class CalibrationOverlay {
     }
   }
 
-  getCalibrationTargets(): HTMLElement[] {
+  getCalibrationTargets() {
     return this.targetElements
   }
 
-  setCurrentPointIndex(index: number) {
+  setCurrentPointIndex(index) {
     this.currentPointIndex = index
     this.progress = { current: index + 1, total: this.targetElements.length || 5 }
     this.renderAllTargets()
     this.updateProgressUI()
   }
 
-  show(mode: 'face' | 'hand', onCancel: () => void, onComplete: () => void) {
+  show(mode, onCancel, onComplete) {
     this.onCancelCallback = onCancel
     this.onCompleteCallback = onComplete
     this.currentPointIndex = 0
@@ -154,25 +154,25 @@ export class CalibrationOverlay {
     this.startAnimation()
   }
 
-  private startAnimation() {
+  startAnimation() {
     this.stopAnimation()
     this.animate()
   }
 
-  private stopAnimation() {
+  stopAnimation() {
     if (this.animationId) {
       cancelAnimationFrame(this.animationId)
       this.animationId = null
     }
   }
 
-  private animate = () => {
+  animate = () => {
     this.pulsePhase = (this.pulsePhase + 0.02) % (Math.PI * 2)
     this.renderTargets()
     this.animationId = requestAnimationFrame(this.animate)
   }
 
-  private renderAllTargets() {
+  renderAllTargets() {
     if (!this.container) return
 
     const viewportWidth = window.innerWidth
@@ -247,7 +247,7 @@ export class CalibrationOverlay {
     })
   }
 
-  private renderTargets() {
+  renderTargets() {
     if (!this.container) return
 
     const pulseScale = 1 + Math.sin(this.pulsePhase) * 0.15
@@ -257,7 +257,7 @@ export class CalibrationOverlay {
     if (currentTarget) {
       const centerDiv = currentTarget.querySelector('div[style*="radial-gradient(circle at 30% 30%"]')
       if (centerDiv) {
-        (centerDiv as HTMLElement).style.transform = `scale(${pulseScale})`
+        centerDiv.style.transform = `scale(${pulseScale})`
       }
     }
   }

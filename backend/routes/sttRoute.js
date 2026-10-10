@@ -54,10 +54,9 @@ router.post("/transcribe", upload.single("file"), async (req, res) => {
     const modelName = req.body.model || "saaras:v3";
     formData.append("model", modelName);
 
-    // Language code (optional / auto-detect if 'unknown')
-    if (req.body.language_code) {
-      formData.append("language_code", req.body.language_code);
-    }
+    // Language code (defaults to en-IN to prevent non-English script hallucinations like Gujarati 'છે.')
+    const langCode = req.body.language_code || "en-IN";
+    formData.append("language_code", langCode);
 
     // 4. Send request to Sarvam STT Endpoint
     console.log(`[Backend] Forwarding audio to Sarvam AI API (${SARVAM_STT_ENDPOINT})...`);

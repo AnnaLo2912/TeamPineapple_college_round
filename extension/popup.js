@@ -571,17 +571,28 @@ document.addEventListener('DOMContentLoaded', () => {
         setUIState(State.COMPLETED, `Command: "${transcript}"`);
         executeVoiceCommand(transcript);
       } else if (activeMode === Mode.DICTATION || activeMode === Mode.READING) {
-        // Standard navigation voice commands during reading
-        const isStandardNavCommand = [
+        // Voice action commands during dictation & reading
+        const isActionCommand = [
           'previous', 'prev', 'read previous', 'previous section',
           'repeat', 'repeat that', 'repeat section',
           'scroll down', 'scroll up', 'page down', 'page up',
           'pause', 'pause reading', 'resume', 'resume reading',
-          'stop', 'stop reading', 'cancel'
+          'stop', 'stop reading', 'cancel',
+          'backspace', 'back space', 'delete word',
+          'clear text', 'clear input', 'clear',
+          'undo', 'uncheck', 'deselect', 'clear options',
+          'submit', 'submit form', 'send form'
         ].includes(lower);
 
-        if (isStandardNavCommand) {
-          executeVoiceCommand(transcript);
+        if (isActionCommand) {
+          executeVoiceCommand(lower);
+          if (isReadingActive && !['stop', 'cancel', 'submit', 'submit form', 'send form'].includes(lower)) {
+            setTimeout(() => {
+              if (isReadingActive && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
+                startRecording();
+              }
+            }, 600);
+          }
           return;
         }
 
@@ -984,6 +995,19 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (text === 'read selected' || text === 'read selection') {
       messageText.textContent = 'Command: Read selected text';
       readSelectedText();
+    } else if (text === 'backspace' || text === 'delete word' || text === 'back space') {
+      messageText.textContent = 'Command: Backspace word';
+      sendToActiveTab({ action: 'BACKSPACE_WORD' });
+    } else if (text === 'clear text' || text === 'clear input' || text === 'clear') {
+      messageText.textContent = 'Command: Clear text field';
+      sendToActiveTab({ action: 'CLEAR_TEXT' });
+    } else if (text === 'undo' || text === 'uncheck' || text === 'deselect' || text === 'clear options') {
+      messageText.textContent = 'Command: Undo / uncheck options';
+      sendToActiveTab({ action: 'UNDO_CHECKED_OPTIONS', sectionIndex: currentReadingIndex });
+    } else if (text === 'submit' || text === 'submit form' || text === 'send form') {
+      messageText.textContent = 'Command: Submit form';
+      sendToActiveTab({ action: 'SUBMIT_FORM' });
+      speakText('Submitting form.');
     } else if (text === 'dictation' || text === 'start dictation' || text === 'dictation mode') {
       setActiveMode(Mode.DICTATION);
       messageText.textContent = 'Switched to Dictation Mode.';

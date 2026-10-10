@@ -49,13 +49,8 @@
   function insertDictatedText(text) {
     let target = lastFocusedElement || document.activeElement;
 
-    if (!isEditableElement(target)) {
-      const inputs = Array.from(document.querySelectorAll('input, textarea, [contenteditable="true"]'));
-      target = inputs.find(el => isEditableElement(el) && el.offsetParent !== null) || null;
-    }
-
     if (!target || !isEditableElement(target)) {
-      return { success: false, error: 'No focused text field found on webpage. Click an input box first!' };
+      return { success: false, error: 'No focused text field found in current question.' };
     }
 
     const tagName = target.tagName ? target.tagName.toLowerCase() : '';
@@ -317,6 +312,12 @@
       sibling = sibling.nextElementSibling;
       count++;
     }
+
+    // 5. If no text input field found (e.g. Radio/Checkbox question), reset lastFocusedElement
+    lastFocusedElement = null;
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      try { document.activeElement.blur(); } catch (e) {}
+    }
   }
 
   /**
@@ -427,13 +428,16 @@
       if (!term) continue;
       const termLower = term.toLowerCase();
 
-      // Match strategy: exact match > startsWith > includes
+      // Match strategy: exact match > startsWith > includes > phrase contains option
       let bestMatch = candidateOptions.find(o => o.text.toLowerCase() === termLower);
       if (!bestMatch) {
         bestMatch = candidateOptions.find(o => o.text.toLowerCase().startsWith(termLower));
       }
       if (!bestMatch) {
         bestMatch = candidateOptions.find(o => o.text.toLowerCase().includes(termLower));
+      }
+      if (!bestMatch) {
+        bestMatch = candidateOptions.find(o => termLower.includes(o.text.toLowerCase()) && o.text.length >= 3);
       }
 
       if (bestMatch && bestMatch.element) {
@@ -469,12 +473,199 @@
   }
 
   /**
+   * Delete previous word in focused text input
+   */
+  function backspaceLastWord() {
+    let target = lastFocusedElement || document.activeElement;
+    if (!isEditableElement(target)) {
+      const inputs = Array.from(document.querySelectorAll('input, textarea, [contenteditable="true"]'));
+      target = inputs.find(el => isEditableElement(el) && el.offsetParent !== null) || null;
+    }
+
+    if (!target || !isEditableElement(target)) {
+      return { success: false, error: 'No active text field focused.' };
+    }
+
+    const tagName = target.tagName ? target.tagName.toLowerCase() : '';
+
+    if (tagName === 'input' || tagName === 'textarea') {
+      let value = target.value || '';
+      if (!value) return { success: true, message: 'Text field is empty.' };
+
+      // Remove last word and trailing whitespace
+      const newValue = value.replace(/\s*\S+\s*$/, '');
+
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+      )?.set || Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, 'value'
+      )?.set;
+
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(target, newValue);
+      } else {
+        target.value = newValue;
+      }
+
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+      flashHighlight(target);
+      return { success: true, message: 'Deleted previous word.' };
+    } else if (target.isContentEditable || target.getAttribute('contenteditable') === 'true') {
+      target.focus();
+      document.execCommand('undo', false, null);
+      flashHighlight(target);
+      return { success: true, message: 'Deleted previous word.' };
+    }
+
+    return { success: false, error: 'Cannot backspace on target element.' };
+  }
+
+  /**
+   * Clear all text in focused input field
+   */
+  function clearInputText() {
+    let target = lastFocusedElement || document.activeElement;
+    if (!isEditableElement(target)) {
+      const inputs = Array.from(document.querySelectorAll('input, textarea, [contenteditable="true"]'));
+      target = inputs.find(el => isEditableElement(el) && el.offsetParent !== null) || null;
+    }
+
+    if (!target || !isEditableElement(target)) {
+      return { success: false, error: 'No active text field focused.' };
+    }
+
+    const tagName = target.tagName ? target.tagName.toLowerCase() : '';
+
+    if (tagName === 'input' || tagName === 'textarea') {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+      )?.set || Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, 'value'
+      )?.set;
+
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(target, '');
+      } else {
+        target.value = '';
+      }
+
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+      flashHighlight(target);
+      return { success: true, message: 'Cleared text field.' };
+    } else if (target.isContentEditable || target.getAttribute('contenteditable') === 'true') {
+      target.innerHTML = '';
+      flashHighlight(target);
+      return { success: true, message: 'Cleared text field.' };
+    }
+
+    return { success: false, error: 'Cannot clear target element.' };
+  }
+
+  /**
+   * Uncheck checked radio buttons / checkboxes in active section or page
+   */
+  function undoCheckedOptions(sectionIndex) {
+    let card = null;
+    if (sectionIndex !== undefined && sectionIndex >= 0 && sectionIndex < pageSections.length) {
+      const sec = pageSections[sectionIndex];
+      if (sec && sec.element) card = sec.element;
+    }
+
+    if (!card) {
+      card = document.body;
+    }
+
+    const checkedEls = Array.from(card.querySelectorAll('[role="radio"][aria-checked="true"], [role="checkbox"][aria-checked="true"], input[type="radio"]:checked, input[type="checkbox"]:checked, .docssharedWizToggleLabeledContainer[aria-checked="true"]'));
+
+    if (checkedEls.length === 0) {
+      const clearBtn = card.querySelector('.freebirdFormviewerViewItemsItemClearSelectionButton, [role="button"][data-tooltip*="Clear"], button[aria-label*="Clear"]');
+      if (clearBtn) {
+        clearBtn.click();
+        flashHighlight(clearBtn);
+        return { success: true, message: 'Cleared section options.' };
+      }
+      return { success: false, error: 'No checked options found to uncheck.' };
+    }
+
+    checkedEls.forEach(el => {
+      el.click();
+      if (el.tagName === 'INPUT') {
+        el.checked = false;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      flashHighlight(el);
+    });
+
+    return { success: true, message: `Unchecked ${checkedEls.length} option(s).` };
+  }
+
+  /**
+   * Submit active web form or Google Form
+   */
+  function submitFormOnPage() {
+    const selectors = [
+      '.freebirdFormviewerViewNavigationSubmitButton',
+      '.uArLdd[role="button"]',
+      'div[role="button"][jsname="M2pvEf"]',
+      'button[type="submit"]',
+      'input[type="submit"]',
+      '[role="button"][aria-label*="Submit"]',
+      '[role="button"][aria-label*="Send"]'
+    ];
+
+    let submitBtn = null;
+    for (const sel of selectors) {
+      const candidate = document.querySelector(sel);
+      if (candidate && candidate.offsetParent !== null) {
+        submitBtn = candidate;
+        break;
+      }
+    }
+
+    if (!submitBtn) {
+      const allBtns = Array.from(document.querySelectorAll('button, [role="button"], input[type="button"]'));
+      submitBtn = allBtns.find(b => {
+        if (b.offsetParent === null) return false;
+        const text = (b.innerText || b.value || b.getAttribute('aria-label') || '').toLowerCase().trim();
+        return text === 'submit' || text === 'send' || text.includes('submit form');
+      });
+    }
+
+    if (submitBtn) {
+      flashHighlight(submitBtn);
+      submitBtn.click();
+      return { success: true, message: 'Form submitted successfully!' };
+    }
+
+    return { success: false, error: 'Could not find Submit button on page.' };
+  }
+
+  /**
    * Chrome Extension Message Listener
    */
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     switch (request.action) {
       case 'INSERT_DICTATION':
         sendResponse(insertDictatedText(request.text));
+        break;
+
+      case 'BACKSPACE_WORD':
+        sendResponse(backspaceLastWord());
+        break;
+
+      case 'CLEAR_TEXT':
+        sendResponse(clearInputText());
+        break;
+
+      case 'UNDO_CHECKED_OPTIONS':
+        sendResponse(undoCheckedOptions(request.sectionIndex));
+        break;
+
+      case 'SUBMIT_FORM':
+        sendResponse(submitFormOnPage());
         break;
 
       case 'SELECT_OPTION':

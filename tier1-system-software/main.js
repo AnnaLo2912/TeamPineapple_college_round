@@ -42,4 +42,12 @@ async function init() {
   setInterval(() => {}, 1000 * 60 * 60)
 }
 
+process.on('uncaughtException', (err) => {
+  console.warn('⚠️ [System Notice]:', err?.message || err)
+})
+
+process.on('unhandledRejection', (reason) => {
+  console.warn('⚠️ [System Notice]:', reason)
+})
+
 init().catch(console.error)

@@ -7,6 +7,11 @@ import { exec, spawn } from 'child_process'
  */
 
 let activeTtsProcess = null
+let isSpeaking = false
+
+export function isTtsSpeaking() {
+  return isSpeaking
+}
 
 export function speak(text, interrupt = true) {
   if (!text || typeof text !== 'string') return Promise.resolve()
@@ -20,25 +25,29 @@ export function speak(text, interrupt = true) {
     activeTtsProcess = null
   }
 
+  isSpeaking = true
+
   return new Promise((resolve) => {
     // Escape single quotes for PowerShell
     const psText = sanitized.replace(/'/g, "''")
     const psCommand = `Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Rate = 1; $s.Speak('${psText}')`
 
-    activeTtsProcess = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', psCommand], {
+    activeTtsProcess = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCommand], {
       windowsHide: true,
       stdio: 'ignore'
     })
 
-    activeTtsProcess.on('close', () => {
+    const onDone = () => {
       activeTtsProcess = null
-      resolve()
-    })
+      // 500ms safety buffer so laptop mic doesn't pick up trailing speaker sound
+      setTimeout(() => {
+        isSpeaking = false
+        resolve()
+      }, 500)
+    }
 
-    activeTtsProcess.on('error', () => {
-      activeTtsProcess = null
-      resolve()
-    })
+    activeTtsProcess.on('close', onDone)
+    activeTtsProcess.on('error', onDone)
   })
 }
 

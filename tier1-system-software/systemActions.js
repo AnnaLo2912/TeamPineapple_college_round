@@ -19,9 +19,6 @@ export async function executeCommand(rawCommand) {
     cmd.includes('file explorer') ||
     cmd.includes('open files') ||
     cmd.includes('explorer') ||
-    cmd.includes('folder') ||
-    cmd.includes('extort') ||
-    cmd.includes('taco liar') ||
     cmd === 'files'
   ) {
     playEarcon('success')
@@ -34,8 +31,7 @@ export async function executeCommand(rawCommand) {
     cmd.includes('google') ||
     cmd.includes('browser') ||
     cmd.includes('chrome') ||
-    cmd.includes('internet') ||
-    cmd.includes('goggle')
+    cmd.includes('internet')
   ) {
     playEarcon('success')
     speak('Opening Google Search in browser')
@@ -46,7 +42,6 @@ export async function executeCommand(rawCommand) {
   if (
     cmd.includes('notepad') ||
     cmd.includes('text editor') ||
-    cmd.includes('textile') ||
     cmd.includes('notes')
   ) {
     playEarcon('success')

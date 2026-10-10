@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url'
 import { executeCommand } from './systemActions.js'
 import { announceActiveWindow, announceOpenWindows, dictateStartupScreen } from './screenDictator.js'
 import { dictateFolder } from './fileNavigator.js'
-import { speak, playEarcon } from './ttsEngine.js'
+import { speak, playEarcon, isTtsSpeaking } from './ttsEngine.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -29,6 +29,11 @@ export async function processVoiceInput(input) {
   const text = input.trim()
   if (!text) return
 
+  // Prevent self-triggering: Ignore audio picked up from laptop speakers while assistant is speaking
+  if (isTtsSpeaking()) {
+    return
+  }
+
   console.log(`\n🎤 [Tier 1 Voice Command Received]: "${text}"`)
 
   // Check Screen Dictator commands (Full Screen & Desktop Dictation)
@@ -40,9 +45,7 @@ export async function processVoiceInput(input) {
     lower.includes("what's on") ||
     lower.includes('read screen') ||
     lower.includes('where am i') ||
-    lower.includes('all apps') ||
-    lower.includes('index topped') ||
-    lower.includes('next stop')
+    lower.includes('all apps')
   ) {
     await dictateStartupScreen()
     return

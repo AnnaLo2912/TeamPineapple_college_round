@@ -209,31 +209,25 @@ export async function dictateStartupScreen() {
   console.log(`• Desktop Folders (${folders.length}): ${folders.map(f => f.cleanName).join(', ') || 'None'}`)
   console.log(`• Desktop Applications (${apps.length}): ${apps.map(a => a.cleanName).join(', ') || 'None'}`)
 
-  // Build clean, natural speech announcement
-  let speech = 'Handsfree System Assistant is ready. '
+  // Build clean, natural, concise speech announcement (under 4 seconds)
+  let speech = 'Handsfree active. '
 
   if (openWindows.length > 0) {
     const cleanAppNames = openWindows
-      .slice(0, 4)
+      .slice(0, 3)
       .map(w => w.split('-')[0].split('—')[0].trim())
       .filter((v, i, a) => a.indexOf(v) === i)
-    speech += `On your screen right now, open applications are: ${cleanAppNames.join(', ')}. `
+    speech += `Open applications: ${cleanAppNames.join(', ')}. `
   } else {
     speech += 'You are on the desktop. '
   }
 
-  const folderNames = folders.slice(0, 3).map(f => f.cleanName)
-  const appNames = apps.slice(0, 4).map(a => a.cleanName)
-
+  const folderNames = folders.slice(0, 2).map(f => f.cleanName)
   if (folderNames.length > 0) {
-    speech += `On your desktop, folders available: ${folderNames.join(', ')}. `
+    speech += `Desktop folders: ${folderNames.join(', ')}. `
   }
 
-  if (appNames.length > 0) {
-    speech += `Desktop applications: ${appNames.join(', ')}. `
-  }
-
-  speech += 'Tell me what to open. You can say: Open Google, Open File Explorer, or open any folder.'
+  speech += 'What would you like to open?'
 
   console.log(`🗣️  [Voice Assistant Announcement]:\n"${speech}"\n`)
   await speak(speech)

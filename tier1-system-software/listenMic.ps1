@@ -20,15 +20,20 @@ try {
         'open task manager', 'task manager',
         'what is on screen', 'what is on my screen', "what's on screen", 'read screen', 'screen', 'active window', 'current window', 'desktop', 'the desktop', 'where am i',
         'list windows', 'open windows', 'what windows are open',
+        'open tools', 'tools', 'open tools folder',
+        'open brave', 'brave',
+        'open code', 'open visual studio code', 'visual studio code', 'vs code',
+        'open resume', 'resume',
+        'what files are in downloads', 'read downloads', 'open downloads', 'downloads',
+        'what files are in documents', 'read documents', 'open documents', 'documents',
+        'what files are on desktop', 'read desktop files',
         'minimize window', 'minimize',
         'close window', 'close',
         'switch window', 'next window',
         'volume up', 'increase volume',
         'volume down', 'decrease volume',
         'mute', 'unmute',
-        'help',
-        # Phonetic variants
-        'the index topped', 'next stop', 'x taco liar', 'textile', 'ie to extort all'
+        'help'
     )
 
     $choices = New-Object System.Speech.Recognition.Choices

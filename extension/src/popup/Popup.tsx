@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { loadConfig, saveConfig } from '../utils/storage'
-import { calibrationManager } from '../calibration/calibrationManager'
-import type { TrackerConfig } from '../tracking/types'
+import type { TrackerConfig } from '../shared/types'
+import { STORAGE_KEYS } from '../shared/constants'
 
 interface PopupState {
   isEnabled: boolean
@@ -10,48 +9,96 @@ interface PopupState {
   sensitivity: number
   smoothing: number
   deadZone: number
-  showPreview: boolean
+  dwellTime: number
+  edgeScroll: boolean
+  snapStrength: number
+  magneticRadius: number
+  padSpeed: number
   hasFaceCalibration: boolean
   hasHandCalibration: boolean
+  unsupportedPage: boolean
 }
 
 const Popup: React.FC = () => {
   const [state, setState] = useState<PopupState>({
     isEnabled: true,
     mode: 'face',
-    sensitivity: 1.5,
+    sensitivity: 2.2,
     smoothing: 0.15,
-    deadZone: 0.02,
-    showPreview: false,
+    deadZone: 0.01,
+    dwellTime: 2500,
+    edgeScroll: true,
+    snapStrength: 0.75,
+    magneticRadius: 64,
+    padSpeed: 22,
     hasFaceCalibration: false,
     hasHandCalibration: false,
+    unsupportedPage: false,
   })
 
   useEffect(() => {
     const init = async () => {
       const config = await loadConfig()
-      const faceCal = calibrationManager.getCalibration('face')
-      const handCal = calibrationManager.getCalibration('hand')
-      setState(prev => ({
-        ...prev,
-        mode: config.mode,
-        sensitivity: config.sensitivity,
-        smoothing: config.smoothing,
-        deadZone: config.deadZone,
-        showPreview: config.showWebcamPreview,
-        hasFaceCalibration: !!faceCal?.matrix,
-        hasHandCalibration: !!handCal?.matrix,
-      }))
+      const faceCal = await getCalibration('face')
+      const handCal = await getCalibration('hand')
+
+      // Check if current page supports content scripts
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tab = tabs[0]
+        const unsupported = Boolean(!tab?.id ||
+          tab.url?.startsWith('chrome://') ||
+          tab.url?.startsWith('edge://') ||
+          tab.url?.startsWith('about:') ||
+          tab.url?.startsWith('chrome-extension://') ||
+          tab.url?.startsWith('moz-extension://'))
+
+        setState(prev => ({
+          ...prev,
+          mode: config.mode,
+          sensitivity: config.sensitivity,
+          smoothing: config.smoothing,
+          deadZone: config.deadZone,
+          dwellTime: config.dwellTime,
+          edgeScroll: config.edgeScroll ?? true,
+          snapStrength: config.snapStrength ?? 0.75,
+          magneticRadius: config.magneticRadius ?? 64,
+          padSpeed: config.padSpeed ?? 22,
+          hasFaceCalibration: !!faceCal?.matrix,
+          hasHandCalibration: !!handCal?.matrix,
+          unsupportedPage: unsupported,
+        }))
+      })
     }
     init()
+
+    chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (status) => {
+      if (chrome.runtime.lastError || !status) return
+      setState(prev => ({
+        ...prev,
+        isEnabled: !!status.enabled,
+        mode: status.mode || prev.mode,
+      }))
+    })
+
+    // Listen for status updates from background
+    const handleStatusUpdate = (message: any) => {
+      if (message.type === 'STATUS_UPDATE') {
+        setState(prev => ({
+          ...prev,
+          isEnabled: message.enabled,
+          mode: message.mode,
+        }))
+      }
+    }
+
+    chrome.runtime.onMessage.addListener(handleStatusUpdate)
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleStatusUpdate)
+    }
   }, [])
 
   const sendMessage = (type: string, payload?: any) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, { type, ...payload })
-      }
-    })
+    chrome.runtime.sendMessage({ type, ...payload })
   }
 
   const updateConfig = async (updates: Partial<TrackerConfig>) => {
@@ -59,7 +106,7 @@ const Popup: React.FC = () => {
     const newConfig = { ...config, ...updates }
     await saveConfig(newConfig)
     setState(prev => ({ ...prev, ...updates }))
-    sendMessage('CONFIG_UPDATE', newConfig)
+    sendMessage('CONFIG_UPDATE', { config: newConfig })
   }
 
   const toggleEnabled = () => {
@@ -73,9 +120,9 @@ const Popup: React.FC = () => {
   const changeMode = async (newMode: 'face' | 'hand') => {
     await updateConfig({ mode: newMode })
     sendMessage('SET_MODE', { mode: newMode })
-    const cal = calibrationManager.getCalibration(newMode)
-    setState(prev => ({ 
-      ...prev, 
+    const cal = await getCalibration(newMode)
+    setState(prev => ({
+      ...prev,
       mode: newMode,
       hasFaceCalibration: newMode === 'face' ? !!cal?.matrix : prev.hasFaceCalibration,
       hasHandCalibration: newMode === 'hand' ? !!cal?.matrix : prev.hasHandCalibration,
@@ -92,7 +139,8 @@ const Popup: React.FC = () => {
   }
 
   const handleClearCalibration = async (mode: 'face' | 'hand') => {
-    calibrationManager.clearCalibration(mode)
+    const key = mode === 'face' ? STORAGE_KEYS.CALIBRATION_FACE : STORAGE_KEYS.CALIBRATION_HAND
+    await chrome.storage.sync.remove(key)
     setState(prev => ({
       ...prev,
       hasFaceCalibration: mode === 'face' ? false : prev.hasFaceCalibration,
@@ -130,6 +178,14 @@ const Popup: React.FC = () => {
           </span>
         </label>
       </div>
+
+      {state.unsupportedPage && (
+        <div style={styles.unsupportedBanner}>
+          <span>⚠</span>
+          <span>Extension doesn't work on this page (chrome://, settings, etc.)</span>
+          <span>Navigate to a regular website to use Handsfree</span>
+        </div>
+      )}
 
       <div style={styles.section}>
         <div style={styles.row}>
@@ -211,15 +267,85 @@ const Popup: React.FC = () => {
           </div>
 
           <div style={styles.section}>
+            <div style={styles.row}>
+              <span style={styles.label}>Click dwell</span>
+              <input
+                type="range"
+                min="800"
+                max="4000"
+                step="100"
+                value={state.dwellTime}
+                onChange={(e) => updateConfig({ dwellTime: parseFloat(e.target.value) })}
+                style={styles.slider}
+                disabled={!state.isEnabled}
+              />
+              <span style={styles.value}>{(state.dwellTime / 1000).toFixed(1)}s</span>
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <div style={styles.row}>
+              <span style={styles.label}>Snap strength</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={state.snapStrength}
+                onChange={(e) => updateConfig({ snapStrength: parseFloat(e.target.value) })}
+                style={styles.slider}
+                disabled={!state.isEnabled}
+              />
+              <span style={styles.value}>{Math.round(state.snapStrength * 100)}%</span>
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <div style={styles.row}>
+              <span style={styles.label}>Snap radius</span>
+              <input
+                type="range"
+                min="20"
+                max="140"
+                step="4"
+                value={state.magneticRadius}
+                onChange={(e) => updateConfig({ magneticRadius: parseFloat(e.target.value) })}
+                style={styles.slider}
+                disabled={!state.isEnabled}
+              />
+              <span style={styles.value}>{state.magneticRadius}px</span>
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <div style={styles.row}>
+              <span style={styles.label}>Pad speed</span>
+              <input
+                type="range"
+                min="6"
+                max="40"
+                step="1"
+                value={state.padSpeed}
+                onChange={(e) => updateConfig({ padSpeed: parseFloat(e.target.value) })}
+                style={styles.slider}
+                disabled={!state.isEnabled}
+              />
+              <span style={styles.value}>{state.padSpeed}</span>
+            </div>
+          </div>
+
+          <div style={styles.section}>
             <label style={styles.toggleLabel}>
               <input
                 type="checkbox"
-                checked={state.showPreview}
-                onChange={(e) => updateConfig({ showWebcamPreview: e.target.checked })}
+                checked={state.edgeScroll}
+                onChange={(e) => updateConfig({ edgeScroll: e.target.checked })}
                 style={styles.toggleInput}
-                disabled={!state.isEnabled}
               />
-              <span style={styles.toggleText}>Webcam Preview</span>
+              <span style={styles.toggleText}>Continuous scrolling</span>
+              <span style={state.edgeScroll ? styles.statusActive : styles.statusInactive}>
+                {state.edgeScroll ? 'On' : 'Off'}
+              </span>
             </label>
           </div>
 
@@ -281,12 +407,60 @@ const Popup: React.FC = () => {
           <span>Recenter</span>
         </div>
         <div style={styles.shortcut}>
+          <kbd style={styles.kbd}>🕹</kbd>
+          <span>Left dock: glide cursor / scroll</span>
+        </div>
+        <div style={styles.shortcut}>
           <kbd style={styles.kbd}>Dwell</kbd>
-          <span>Click (800ms)</span>
+          <span>Click ({(state.dwellTime / 1000).toFixed(1)}s)</span>
         </div>
       </div>
     </div>
   )
+}
+
+async function loadConfig(): Promise<TrackerConfig> {
+  try {
+    const result = await chrome.storage.sync.get(STORAGE_KEYS.CONFIG)
+    if (result[STORAGE_KEYS.CONFIG]) {
+      return { ...DEFAULT_CONFIG, ...result[STORAGE_KEYS.CONFIG] }
+    }
+  } catch (e) {
+    console.warn('Failed to load config:', e)
+  }
+  return DEFAULT_CONFIG
+}
+
+async function saveConfig(config: TrackerConfig): Promise<void> {
+  try {
+    await chrome.storage.sync.set({ [STORAGE_KEYS.CONFIG]: config })
+  } catch (e) {
+    console.warn('Failed to save config:', e)
+  }
+}
+
+async function getCalibration(mode: 'face' | 'hand'): Promise<any> {
+  try {
+    const key = mode === 'face' ? STORAGE_KEYS.CALIBRATION_FACE : STORAGE_KEYS.CALIBRATION_HAND
+    const result = await chrome.storage.sync.get(key)
+    return result[key] || null
+  } catch {
+    return null
+  }
+}
+
+const DEFAULT_CONFIG: TrackerConfig = {
+  mode: 'face',
+  sensitivity: 2.2,
+  deadZone: 0.01,
+  smoothing: 0.15,
+  showWebcamPreview: false,
+  magneticRadius: 64,
+  snapStrength: 0.75,
+  dwellTime: 2500,
+  edgeScroll: true,
+  edgeScrollBand: 0.15,
+  padSpeed: 22,
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -505,6 +679,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#4ecdc4',
     minWidth: 50,
     textAlign: 'center',
+  },
+  unsupportedBanner: {
+    margin: '12px 20px 0',
+    padding: '12px 16px',
+    background: 'rgba(255, 170, 0, 0.15)',
+    border: '1px solid rgba(255, 170, 0, 0.3)',
+    borderRadius: '8px',
+    color: '#ffaa00',
+    fontSize: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
   },
 }
 

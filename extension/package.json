@@ -4,10 +4,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch --mode development",
-    "build": "vite build --mode production",
+    "build": "vite build --mode production && vite build --config vite.content.config.ts",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^1.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

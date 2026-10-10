@@ -2,7 +2,11 @@ export class TabDock {
   constructor(callbacks) {
     this.callbacks = callbacks
     this.dockElement = null
+    this.panel = null
+    this.tabsToggleButton = null
+    this.panelOpen = false
     this.buttons = []
+    this.entries = []
     this.createElements()
   }
 
@@ -27,13 +31,9 @@ export class TabDock {
     `
 
     this.row([
-      this.button('◀', 'Cursor left', 'nudge', 'nudge-left', 'left', true),
-      this.button('▲', 'Cursor up', 'nudge', 'nudge-up', 'up', true),
-      this.button('▶', 'Cursor right', 'nudge', 'nudge-right', 'right', true),
-    ])
-    this.row([
-      this.button('▼', 'Cursor down', 'nudge', 'nudge-down', 'down', true),
-      this.button('■', 'Stop', 'stop', 'stop'),
+      this.button('⟳', 'Refresh page', 'nav', 'refresh', undefined, true),
+      this.button('‹', 'Back', 'nav', 'back', undefined, true),
+      this.button('›', 'Forward', 'nav', 'forward', undefined, true),
     ])
     this.divider()
     this.row([
@@ -45,6 +45,29 @@ export class TabDock {
       this.button('◎', 'Recenter', 'recenter', 'recenter'),
       this.button('◨', 'Next tab', 'tab', 'tab-next', undefined, false, 1),
     ])
+    this.divider()
+
+    const tabsToggle = this.button('☰  Tabs  ▾', 'Open tab list', 'tabs-toggle', 'tabs-toggle')
+    tabsToggle.style.width = '100%'
+    tabsToggle.style.justifyContent = 'center'
+    this.tabsToggleButton = tabsToggle
+    this.row([tabsToggle])
+
+    this.panel = document.createElement('div')
+    this.panel.className = 'handsfree-tab-panel'
+    this.panel.style.cssText = `
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      width: 190px;
+      max-height: 240px;
+      overflow-y: auto;
+      padding: 6px;
+      background: rgba(10, 10, 20, 0.92);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+    `
+    this.dockElement.appendChild(this.panel)
 
     document.body.appendChild(this.dockElement)
   }
@@ -116,9 +139,97 @@ export class TabDock {
         case 'tab':
           this.callbacks.onTab(dir)
           break
+        case 'nav':
+          this.callbacks.onNav(action)
+          break
+        case 'tabs-toggle':
+          this.togglePanel()
+          break
       }
     })
     return button
+  }
+
+  togglePanel() {
+    if (this.panelOpen) {
+      this.closePanel()
+      return
+    }
+    this.openPanel()
+    this.callbacks.onTabsToggle?.()
+  }
+
+  openPanel() {
+    this.panelOpen = true
+    if (this.tabsToggleButton) this.tabsToggleButton.textContent = '☰  Tabs  ▴'
+    if (this.panel) this.panel.style.display = 'flex'
+  }
+
+  closePanel() {
+    this.panelOpen = false
+    if (this.tabsToggleButton) this.tabsToggleButton.textContent = '☰  Tabs  ▾'
+    if (this.panel) this.panel.style.display = 'none'
+  }
+
+  setTabEntries(list) {
+    this.clearEntries()
+    if (!this.panel) return
+    const items = Array.isArray(list) ? list : []
+    if (!items.length) {
+      const empty = document.createElement('div')
+      empty.textContent = 'No tabs'
+      empty.style.cssText = 'padding:8px 10px;color:rgba(255,255,255,0.5);font-size:12px;'
+      this.panel.appendChild(empty)
+      return
+    }
+
+    for (const tab of items) {
+      const entry = document.createElement('button')
+      entry.type = 'button'
+      entry.className = 'handsfree-tab-entry'
+      entry.dataset.handsfreeAction = 'tab-entry'
+      const label = tab.title || tab.url || 'Untitled'
+      entry.title = label
+      entry.textContent = (tab.active ? '● ' : '') + label
+      const baseBg = tab.active ? 'rgba(78,205,196,0.22)' : 'rgba(255,255,255,0.06)'
+      entry.style.cssText = `
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 8px 10px;
+        background: ${baseBg};
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        color: #eaeaea;
+        font-size: 12px;
+        line-height: 1.2;
+        text-align: left;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      `
+      entry.addEventListener('mouseenter', () => {
+        entry.style.background = 'rgba(78,205,196,0.35)'
+        entry.style.borderColor = 'rgba(78,205,196,0.6)'
+      })
+      entry.addEventListener('mouseleave', () => {
+        entry.style.background = baseBg
+        entry.style.borderColor = 'rgba(255,255,255,0.08)'
+      })
+      entry.addEventListener('click', () => {
+        this.callbacks.onTabJump?.(tab)
+        this.closePanel()
+      })
+
+      this.entries.push({ element: entry, action: 'tab-entry', kind: 'tab-jump', tab })
+      this.panel.appendChild(entry)
+    }
+  }
+
+  clearEntries() {
+    this.entries = []
+    if (this.panel) this.panel.replaceChildren()
   }
 
   hitTest(x, y) {
@@ -128,14 +239,32 @@ export class TabDock {
         return { element: b.element, action: b.action, rect }
       }
     }
+    if (this.panelOpen) {
+      for (const e of this.entries) {
+        const rect = e.element.getBoundingClientRect()
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+          return { element: e.element, action: e.action, rect }
+        }
+      }
+    }
     return null
   }
 
   isOverDock(x, y) {
     const el = this.dockElement
-    if (!el) return false
-    const rect = el.getBoundingClientRect()
-    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        return true
+      }
+    }
+    if (this.panelOpen && this.panel) {
+      const rect = this.panel.getBoundingClientRect()
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        return true
+      }
+    }
+    return false
   }
 
   show() {
@@ -153,6 +282,10 @@ export class TabDock {
   destroy() {
     this.dockElement?.remove()
     this.dockElement = null
+    this.panel = null
+    this.tabsToggleButton = null
+    this.panelOpen = false
     this.buttons = []
+    this.entries = []
   }
 }

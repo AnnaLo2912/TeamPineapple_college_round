@@ -112,7 +112,38 @@ function initOverlay() {
       stopNudge()
       sendTabCommand(dir)
     },
+    onNav: (action) => {
+      triggerDockCooldown()
+      cancelRecenter()
+      stopScrollDrive()
+      stopNudge()
+      chrome.runtime.sendMessage({ type: 'PAGE_NAV', action }, () => void chrome.runtime.lastError)
+      debugLog('content', 'nav', { action })
+    },
+    onTabJump: (tab) => {
+      triggerDockCooldown()
+      if (tab?.id != null) {
+        chrome.runtime.sendMessage({ type: 'ACTIVATE_TAB', tabId: tab.id }, () => void chrome.runtime.lastError)
+      } else if (tab?.url) {
+        chrome.runtime.sendMessage({ type: 'ACTIVATE_TAB', url: tab.url }, () => void chrome.runtime.lastError)
+      }
+      debugLog('content', 'tab:jump', { tabId: tab?.id })
+    },
+    onTabsToggle: () => {
+      triggerDockCooldown()
+      refreshTabList()
+    },
   })
+}
+
+async function refreshTabList() {
+  try {
+    const response = await messagingBridge.sendToBackground({ type: 'GET_RECENT_TABS' })
+    tabDock?.setTabEntries(response?.tabs || [])
+  } catch (error) {
+    debugLog('content', 'tabs:error', { error: String(error) })
+    tabDock?.setTabEntries([])
+  }
 }
 
 function triggerDockCooldown() {

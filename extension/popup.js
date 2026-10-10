@@ -19,6 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const visualizer = document.getElementById('visualizer');
   const backendIndicator = document.getElementById('backendIndicator');
   const grantMicBtn = document.getElementById('grantMicBtn');
+  const toggleNumbersBtn = document.getElementById('toggleNumbersBtn');
+  const toggleNumbersText = document.getElementById('toggleNumbersText');
 
   // Backend Express Base URL (supports 5001 as default to prevent macOS AirPlay port 5000 conflicts, with auto-fallback)
   let backendBaseUrl = 'http://localhost:5001';
@@ -378,9 +380,9 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       // Handle recording stop event
-      mediaRecorder.onstop = async () => {
+      mediaRecorder.onstop = async (event) => {
         clearInterval(recordingTimer);
-        const actualMime = mediaRecorder.mimeType || mimeType || 'audio/webm';
+        const actualMime = (mediaRecorder && mediaRecorder.mimeType) || (event && event.target && event.target.mimeType) || mimeType || 'audio/webm';
         recordedAudioBlob = new Blob(audioChunks, { type: actualMime });
         
         // Stop hardware mic stream
@@ -605,11 +607,13 @@ document.addEventListener('DOMContentLoaded', () => {
           'backspace', 'back space', 'delete word',
           'clear text', 'clear input', 'clear',
           'undo', 'uncheck', 'deselect', 'clear options',
-          'submit', 'submit form', 'send form'
-        ].includes(lower);
+          'submit', 'submit form', 'send form',
+          'show numbers', 'show links', 'show badges', 'numbers',
+          'hide numbers', 'hide links', 'hide badges'
+        ].includes(lower) || extractSpokenNumber(transcript, true) !== null;
 
         if (isActionCommand) {
-          executeVoiceCommand(lower);
+          executeVoiceCommand(transcript);
           if (isReadingActive && !['stop', 'cancel', 'submit', 'submit form', 'send form'].includes(lower)) {
             setTimeout(() => {
               if (isReadingActive && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
@@ -1121,6 +1125,94 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // --- Numbered Link Overlay (Click-by-Voice) ---
+
+  let isNumbersOverlayActive = false;
+
+  async function toggleNumberedLinksOverlay() {
+    const res = await sendToActiveTab({ action: 'TOGGLE_NUMBERED_LINKS' });
+    if (res && res.success) {
+      isNumbersOverlayActive = !isNumbersOverlayActive;
+      updateNumbersBtnUI(isNumbersOverlayActive, res.count);
+      if (isNumbersOverlayActive) {
+        setUIState(State.COMPLETED, `Numbered links active (${res.count || 0} items). Say "Click [number]".`);
+        speakText(`Numbered links shown. ${res.count || ''} items found.`);
+      } else {
+        setUIState(State.COMPLETED, 'Numbered links hidden.');
+      }
+    }
+  }
+
+  function updateNumbersBtnUI(active, count) {
+    if (!toggleNumbersBtn) return;
+    if (active) {
+      toggleNumbersBtn.classList.add('active');
+      if (toggleNumbersText) {
+        toggleNumbersText.textContent = `Hide Numbered Links (${count || ''})`;
+      }
+    } else {
+      toggleNumbersBtn.classList.remove('active');
+      if (toggleNumbersText) {
+        toggleNumbersText.textContent = 'Show Numbered Links';
+      }
+    }
+  }
+
+  async function syncNumberedLinksStatus() {
+    const res = await sendToActiveTab({ action: 'GET_NUMBERED_LINKS_STATUS' });
+    if (res && res.success) {
+      isNumbersOverlayActive = res.isVisible;
+      updateNumbersBtnUI(res.isVisible, res.count);
+    }
+  }
+
+  function extractSpokenNumber(text, isExplicitClickOnly = false) {
+    if (!text) return null;
+    const clean = text.toLowerCase().replace(/[^\w\s#]/g, '').trim();
+
+    // 1. If in dictation or reading mode, ONLY trigger if the user explicitly says an action verb:
+    // e.g. "click link 5", "click 5", "open 12", "press 4"
+    if (isExplicitClickOnly) {
+      const explicitMatch = clean.match(/^(?:click|open|press|go\s*to)\s+(?:link\s+|number\s+|#)?(\d{1,3})\b/i);
+      if (explicitMatch && explicitMatch[1]) {
+        return parseInt(explicitMatch[1], 10);
+      }
+      return null;
+    }
+
+    // 2. Explicit prefix match: "click 5", "open link 12", "number 8", "link 4"
+    const prefixMatch = clean.match(/^(?:click|open|press|select|go\s*to|number|link)\s+#?(\d{1,3})\b/i);
+    if (prefixMatch && prefixMatch[1]) {
+      return parseInt(prefixMatch[1], 10);
+    }
+
+    // 3. Only if Numbered Links are currently VISIBLE on screen, allow standalone small numbers (1 to 300)
+    // NEVER match 10-digit phone numbers or multi-digit form numbers
+    if (isNumbersOverlayActive) {
+      const standaloneMatch = clean.match(/^#?(\d{1,3})$/);
+      if (standaloneMatch && standaloneMatch[1]) {
+        const n = parseInt(standaloneMatch[1], 10);
+        if (n >= 1 && n <= 300) return n;
+      }
+
+      // Word numbers: standalone words like "five", "twelve"
+      const wordsToNum = {
+        one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+        eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+        twenty: 20
+      };
+
+      for (const [w, n] of Object.entries(wordsToNum)) {
+        const wordPattern = new RegExp(`^(?:click|open|link)?\\s*\\b${w}\\b$`, 'i');
+        if (wordPattern.test(clean)) {
+          return n;
+        }
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Deterministic Voice Command Parser
    * Matches commands strictly and routes to action handlers
@@ -1131,6 +1223,41 @@ document.addEventListener('DOMContentLoaded', () => {
     // Normalise transcript text (lowercase, remove punctuation, collapse whitespace)
     const text = cmdText.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
     console.log('[Handsfree Command] Executing normalized command:', text);
+
+    // Numbered Links Voice Commands
+    if (text === 'show numbers' || text === 'show links' || text === 'show badges' || text === 'numbers') {
+      messageText.textContent = 'Command: Show numbered links';
+      sendToActiveTab({ action: 'SHOW_NUMBERED_LINKS' }).then(res => {
+        isNumbersOverlayActive = true;
+        updateNumbersBtnUI(true, res?.count);
+        setUIState(State.COMPLETED, `Showing ${res?.count || 0} numbered links.`);
+        speakText(`Showing ${res?.count || ''} links.`);
+      });
+      return;
+    } else if (text === 'hide numbers' || text === 'hide links' || text === 'hide badges') {
+      messageText.textContent = 'Command: Hide numbered links';
+      sendToActiveTab({ action: 'HIDE_NUMBERED_LINKS' }).then(() => {
+        isNumbersOverlayActive = false;
+        updateNumbersBtnUI(false, 0);
+        setUIState(State.COMPLETED, 'Hidden link numbers.');
+      });
+      return;
+    }
+
+    // Numbered link selection (e.g. "click 5", "open 12", "number 3", "7")
+    const targetLinkNum = extractSpokenNumber(cmdText);
+    if (targetLinkNum !== null) {
+      messageText.textContent = `Command: Click link #${targetLinkNum}`;
+      sendToActiveTab({ action: 'CLICK_NUMBERED_LINK', number: targetLinkNum }).then(res => {
+        if (res && res.success) {
+          setUIState(State.COMPLETED, `Clicked #${targetLinkNum}: "${res.label}"`);
+          speakText(`Selected ${res.label || targetLinkNum}`);
+        } else {
+          setUIState(State.ERROR, res?.error || `Link #${targetLinkNum} not found.`);
+        }
+      });
+      return;
+    }
 
     if (text === 'next' || text === 'read next' || text === 'next section' || text === 'go next') {
       messageText.textContent = 'Command: Next section';
@@ -1226,6 +1353,10 @@ document.addEventListener('DOMContentLoaded', () => {
     grantMicBtn.addEventListener('click', openPermissionTab);
   }
 
+  if (toggleNumbersBtn) {
+    toggleNumbersBtn.addEventListener('click', toggleNumberedLinksOverlay);
+  }
+
   copyBtn.addEventListener('click', async () => {
     const text = transcriptText.innerText;
     if (text && !transcriptText.classList.contains('placeholder-text')) {
@@ -1252,6 +1383,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setActiveMode(Mode.COMMAND);
   setUIState(State.IDLE);
   checkBackendHealth();
+  syncNumberedLinksStatus();
 });
 
 

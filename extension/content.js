@@ -643,6 +643,239 @@
     return { success: false, error: 'Could not find Submit button on page.' };
   }
 
+  // ==========================================
+  // NUMBERED LINK OVERLAY SYSTEM (Click-by-Voice)
+  // ==========================================
+
+  let hintsOverlay = null;
+  let activeHints = [];
+  let isHintsVisible = false;
+  let hintThrottleTimer = null;
+
+  function isElementVisibleForHints(el) {
+    if (!el || el.offsetParent === null) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
+
+    // Viewport visibility check (with modest buffer for smooth scrolling)
+    const viewHeight = window.innerHeight || document.documentElement.clientHeight;
+    const viewWidth = window.innerWidth || document.documentElement.clientWidth;
+    return (
+      rect.bottom >= -50 &&
+      rect.top <= viewHeight + 50 &&
+      rect.right >= -50 &&
+      rect.left <= viewWidth + 50
+    );
+  }
+
+  function getOrCreateHintsOverlay() {
+    if (!hintsOverlay || !hintsOverlay.isConnected) {
+      hintsOverlay = document.createElement('div');
+      hintsOverlay.id = 'handsfree-hints-overlay';
+      hintsOverlay.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 2147483640;
+      `;
+      document.body.appendChild(hintsOverlay);
+
+      window.addEventListener('scroll', handleHintScrollResize, { passive: true });
+      window.addEventListener('resize', handleHintScrollResize, { passive: true });
+    }
+    return hintsOverlay;
+  }
+
+  function handleHintScrollResize() {
+    if (!isHintsVisible) return;
+    if (hintThrottleTimer) return;
+    hintThrottleTimer = setTimeout(() => {
+      hintThrottleTimer = null;
+      updateHintBadgePositions();
+    }, 40);
+  }
+
+  function updateHintBadgePositions() {
+    if (!isHintsVisible) return;
+    const scrollX = window.scrollX || window.pageXOffset;
+    const scrollY = window.scrollY || window.pageYOffset;
+
+    activeHints.forEach(hint => {
+      if (!hint.element.isConnected) {
+        if (hint.badgeEl) hint.badgeEl.style.display = 'none';
+        return;
+      }
+      const rect = hint.element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        if (hint.badgeEl) hint.badgeEl.style.display = 'none';
+        return;
+      }
+      hint.badgeEl.style.display = 'block';
+      hint.badgeEl.style.left = `${rect.left + scrollX}px`;
+      hint.badgeEl.style.top = `${rect.top + scrollY}px`;
+    });
+  }
+
+  function showNumberedLinks() {
+    clearNumberedLinks();
+    const overlay = getOrCreateHintsOverlay();
+
+    const selectors = [
+      'a[href]',
+      'button:not([disabled])',
+      'input:not([type="hidden"]):not([disabled])',
+      'textarea:not([disabled])',
+      'select:not([disabled])',
+      '[role="button"]:not([disabled])',
+      '[role="link"]',
+      '[role="checkbox"]',
+      '[role="radio"]',
+      '[role="tab"]',
+      '[role="menuitem"]',
+      '[role="option"]',
+      '[onclick]',
+      '[data-clickable]',
+      'summary'
+    ];
+
+    const rawElements = Array.from(document.querySelectorAll(selectors.join(', ')));
+    const scrollX = window.scrollX || window.pageXOffset;
+    const scrollY = window.scrollY || window.pageYOffset;
+
+    let count = 0;
+    const seenElements = new Set();
+
+    rawElements.forEach(el => {
+      if (seenElements.has(el)) return;
+      if (!isElementVisibleForHints(el)) return;
+      if (el.closest('#handsfree-hints-overlay, #handsfree-overlay-root')) return;
+
+      count++;
+      seenElements.add(el);
+
+      const rect = el.getBoundingClientRect();
+      const badge = document.createElement('span');
+      badge.className = 'handsfree-hint-badge';
+      badge.textContent = count;
+      badge.setAttribute('data-hint-number', count);
+      badge.style.cssText = `
+        position: absolute;
+        left: ${rect.left + scrollX}px;
+        top: ${rect.top + scrollY}px;
+        background: linear-gradient(135deg, #ffd700 0%, #f59e0b 100%);
+        color: #0b0f19;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1;
+        padding: 2px 5px;
+        border-radius: 4px;
+        border: 1px solid #ffffff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,0,0,0.2);
+        pointer-events: none;
+        user-select: none;
+        z-index: 2147483645;
+        transform: translate(-4px, -8px);
+        transition: transform 0.15s ease, background 0.2s ease;
+      `;
+
+      overlay.appendChild(badge);
+      activeHints.push({
+        number: count,
+        element: el,
+        badgeEl: badge
+      });
+    });
+
+    isHintsVisible = true;
+    console.log(`[Handsfree] Displayed ${activeHints.length} numbered link badges`);
+    return { success: true, count: activeHints.length };
+  }
+
+  function clearNumberedLinks() {
+    if (hintsOverlay) {
+      hintsOverlay.innerHTML = '';
+    }
+    activeHints = [];
+    isHintsVisible = false;
+    return { success: true };
+  }
+
+  function toggleNumberedLinks() {
+    if (isHintsVisible) {
+      return clearNumberedLinks();
+    } else {
+      return showNumberedLinks();
+    }
+  }
+
+  function clickNumberedLink(targetNum) {
+    const num = parseInt(targetNum, 10);
+    if (isNaN(num)) return { success: false, error: 'Invalid link number provided.' };
+
+    // Auto-generate hints if not active
+    if (!isHintsVisible || activeHints.length === 0) {
+      showNumberedLinks();
+    }
+
+    const item = activeHints.find(h => h.number === num);
+    if (!item || !item.element) {
+      return { success: false, error: `Link #${num} not found. (Page has ${activeHints.length} numbered elements)` };
+    }
+
+    const el = item.element;
+    flashHighlight(el);
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    const tagName = el.tagName.toLowerCase();
+    const isInput = tagName === 'input' || tagName === 'textarea' || el.isContentEditable;
+
+    if (isInput) {
+      el.focus();
+      lastFocusedElement = el;
+      if (tagName === 'input' && (el.type === 'radio' || el.type === 'checkbox')) {
+        el.click();
+      }
+    } else {
+      el.click();
+      el.focus();
+    }
+
+    const label = (
+      el.innerText ||
+      el.value ||
+      el.getAttribute('aria-label') ||
+      el.title ||
+      `Element #${num}`
+    ).trim().replace(/\s+/g, ' ').slice(0, 50);
+
+    // Visual feedback: green pulse on the clicked badge
+    if (item.badgeEl) {
+      item.badgeEl.style.background = '#10b981';
+      item.badgeEl.style.color = '#ffffff';
+      item.badgeEl.style.transform = 'translate(-4px, -10px) scale(1.25)';
+      setTimeout(() => {
+        if (item.badgeEl) {
+          item.badgeEl.style.background = 'linear-gradient(135deg, #ffd700 0%, #f59e0b 100%)';
+          item.badgeEl.style.color = '#0b0f19';
+          item.badgeEl.style.transform = 'translate(-4px, -8px) scale(1)';
+        }
+      }, 800);
+    }
+
+    return {
+      success: true,
+      number: num,
+      label,
+      tagName
+    };
+  }
+
   /**
    * Chrome Extension Message Listener
    */
@@ -702,6 +935,26 @@
 
       case 'PING_CONTENT_SCRIPT':
         sendResponse({ success: true });
+        break;
+
+      case 'SHOW_NUMBERED_LINKS':
+        sendResponse(showNumberedLinks());
+        break;
+
+      case 'HIDE_NUMBERED_LINKS':
+        sendResponse(clearNumberedLinks());
+        break;
+
+      case 'TOGGLE_NUMBERED_LINKS':
+        sendResponse(toggleNumberedLinks());
+        break;
+
+      case 'CLICK_NUMBERED_LINK':
+        sendResponse(clickNumberedLink(request.number));
+        break;
+
+      case 'GET_NUMBERED_LINKS_STATUS':
+        sendResponse({ success: true, isVisible: isHintsVisible, count: activeHints.length });
         break;
 
       default:

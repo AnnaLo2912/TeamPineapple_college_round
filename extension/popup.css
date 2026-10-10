@@ -615,3 +615,28 @@ body {
   0% { height: 4px; }
   100% { height: 18px; }
 }
+
+.btn-amber-glow {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.2) 100%);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.btn-amber-glow:hover {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(217, 119, 6, 0.35) 100%);
+  color: #ffffff;
+  border-color: rgba(245, 158, 11, 0.6);
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-amber-glow.active {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  border-color: #34d399;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+}
+
+.full-width-btn {
+  width: 100%;
+}

@@ -843,18 +843,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return { success: false, error: 'No active tab found.' };
       }
 
-      const url = activeTab.url || '';
+      const url = (activeTab.url || '').toLowerCase();
       const isRestrictedUrl = 
         url.startsWith('chrome://') || 
         url.startsWith('chrome-extension://') || 
         url.startsWith('chrome-search://') || 
         url.startsWith('edge://') || 
+        url.startsWith('extension://') ||
+        url.startsWith('brave://') ||
+        url.startsWith('opera://') ||
+        url.startsWith('vivaldi://') ||
         url.startsWith('about:') || 
+        url.startsWith('moz-extension://') ||
         url.includes('chrome.google.com/webstore') ||
-        url.includes('chromewebstore.google.com');
+        url.includes('chromewebstore.google.com') ||
+        url.includes('microsoftedge.microsoft.com/addons') ||
+        url.includes('addons.mozilla.org');
 
       if (isRestrictedUrl) {
-        return { success: false, error: 'Handsfree is not supported on Chrome system or Webstore pages.' };
+        return { success: false, error: 'Handsfree cannot run on browser internal or extension store pages.' };
       }
 
       // 1. Try direct messaging

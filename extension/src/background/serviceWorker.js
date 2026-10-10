@@ -1,13 +1,8 @@
 import { debugLog, debugEvery } from '../shared/debug.js'
+import { isSupportedPage, getBrowserAPI } from '../shared/browserUtils.js'
 
-function isSupportedPage(url) {
-  if (!url) return false
-  return !url.startsWith('chrome://') &&
-         !url.startsWith('edge://') &&
-         !url.startsWith('about:') &&
-         !url.startsWith('chrome-extension://') &&
-         !url.startsWith('moz-extension://')
-}
+// Browser API reference (chrome or browser)
+const api = getBrowserAPI() || chrome
 
 // Tabs that currently have the content script loaded.
 const activeTabs = new Map()
@@ -17,10 +12,23 @@ let trackingEnabled = true
 let currentMode = 'face'
 let offscreenCreating = null
 
-debugLog('background', 'service worker loaded')
+// Multi-browser tracker hosting state:
+// 'offscreen' (Chromium) | 'iframe' (Firefox background DOM) | 'tab' (Service worker fallback)
+let trackerHostType = null
+let trackerTabId = null
+let trackerIframe = null
+
+debugLog('background', 'service worker loaded in cross-browser mode')
+
+function isUserTab(tabId) {
+  if (tabId == null) return false
+  if (trackerTabId !== null && tabId === trackerTabId) return false
+  if (permissionTabId !== null && tabId === permissionTabId) return false
+  return true
+}
 
 function registerTab(tabId, url) {
-  if (isSupportedPage(url)) {
+  if (isUserTab(tabId) && isSupportedPage(url)) {
     activeTabs.set(tabId, { url, lastSeen: Date.now() })
   }
 }
@@ -44,28 +52,30 @@ function getActiveTabs() {
 
 function forwardToAllTabs(message) {
   getActiveTabs().forEach((tabId) => {
-    chrome.tabs.sendMessage(tabId, message, () => void chrome.runtime.lastError)
+    api.tabs.sendMessage(tabId, message, () => void api.runtime.lastError)
   })
 }
 
 function forwardToActiveTab(message) {
   let tabId = activeTabId
-  if (tabId == null || !activeTabs.has(tabId)) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const tab = tabs[0]
-      if (tab?.id && isSupportedPage(tab.url)) {
-        chrome.tabs.sendMessage(tab.id, message, () => void chrome.runtime.lastError)
+  if (tabId == null || !activeTabs.has(tabId) || !isUserTab(tabId)) {
+    api.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs.find((t) => t.id && isUserTab(t.id) && isSupportedPage(t.url))
+      if (tab?.id) {
+        api.tabs.sendMessage(tab.id, message, () => void api.runtime.lastError)
       }
     })
     return
   }
-  chrome.tabs.sendMessage(tabId, message, () => void chrome.runtime.lastError)
+  api.tabs.sendMessage(tabId, message, () => void api.runtime.lastError)
 }
 
 function switchTab(direction) {
-  chrome.tabs.query({ currentWindow: true }, (tabs) => {
+  api.tabs.query({ currentWindow: true }, (tabs) => {
     if (!tabs.length) return
-    const sorted = tabs.slice().sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    const userTabs = tabs.filter((t) => isUserTab(t.id) && isSupportedPage(t.url))
+    if (!userTabs.length) return
+    const sorted = userTabs.slice().sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
     const activePos = sorted.findIndex((t) => t.active)
     let nextPos = activePos < 0 ? 0 : activePos + direction
     if (nextPos >= sorted.length) nextPos = 0
@@ -73,76 +83,157 @@ function switchTab(direction) {
     const next = sorted[nextPos]
     if (next?.id) {
       activeTabId = next.id
-      chrome.tabs.update(next.id, { active: true })
+      api.tabs.update(next.id, { active: true })
       debugLog('background', 'switchTab', { direction, tabId: next.id })
     }
   })
 }
 
 // ---------------------------------------------------------------------------
-// Offscreen document management
+// Cross-Browser Tracker Host Management
+// Supports:
+// 1. Chromium offscreen document (Chrome, Edge, Brave, Opera)
+// 2. Firefox background page iframe (Firefox with background scripts/DOM)
+// 3. Pinned background tab fallback (any browser without DOM or offscreen API)
 // ---------------------------------------------------------------------------
 
 async function hasOffscreenDocument() {
   try {
-    const runtime = chrome.runtime
+    const runtime = api.runtime
     if (typeof runtime.getContexts === 'function') {
       const contexts = await runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] })
       return Array.isArray(contexts) && contexts.length > 0
     }
   } catch {
-    // getContexts unavailable on older Chrome; fall through.
+    // getContexts unavailable on some browsers; fall through.
   }
   return false
 }
 
-async function ensureOffscreen() {
-  if (await hasOffscreenDocument()) return
+async function isTrackerRunning() {
+  if (trackerHostType === 'offscreen') {
+    return await hasOffscreenDocument()
+  }
+  if (trackerHostType === 'iframe') {
+    return Boolean(trackerIframe && typeof document !== 'undefined' && document.contains(trackerIframe))
+  }
+  if (trackerHostType === 'tab') {
+    if (trackerTabId == null) return false
+    try {
+      const tab = await api.tabs.get(trackerTabId)
+      return Boolean(tab?.id)
+    } catch {
+      trackerTabId = null
+      return false
+    }
+  }
+  return false
+}
+
+async function ensureTrackerHost() {
+  if (await isTrackerRunning()) return
   if (offscreenCreating) {
     await offscreenCreating
     return
   }
 
-  const offscreen = chrome.offscreen
+  const trackerUrl = api.runtime.getURL('src/offscreen/offscreen.html')
 
-  debugLog('background', 'creating offscreen document')
-  offscreenCreating = offscreen
-    .createDocument({
-      url: 'src/offscreen/offscreen.html',
-      reasons: ['USER_MEDIA'],
-      justification: 'Webcam-based head and hand tracking for accessible browsing',
-    })
-    .catch((error) => {
-      const message = String(error?.message || error)
-      if (!message.includes('single offscreen')) {
-        console.error('Failed to create offscreen document:', message)
+  // Strategy 1: Chromium Offscreen Document API (Chrome, Edge, Brave, Opera, Vivaldi)
+  if (typeof api.offscreen !== 'undefined' && typeof api.offscreen.createDocument === 'function') {
+    trackerHostType = 'offscreen'
+    debugLog('background', 'creating Chromium offscreen document')
+    offscreenCreating = api.offscreen
+      .createDocument({
+        url: trackerUrl,
+        reasons: ['USER_MEDIA'],
+        justification: 'Webcam-based head and hand tracking for accessible browsing',
+      })
+      .catch((error) => {
+        const message = String(error?.message || error)
+        if (!message.includes('single offscreen')) {
+          console.warn('[Handsfree] Note creating offscreen document:', message)
+        }
+      })
+      .finally(() => {
+        offscreenCreating = null
+      })
+    await offscreenCreating
+    return
+  }
+
+  // Strategy 2: Firefox Background DOM Iframe (runs in Firefox extension background page)
+  if (typeof document !== 'undefined') {
+    trackerHostType = 'iframe'
+    debugLog('background', 'creating background iframe tracker for Firefox/DOM host')
+    if (!trackerIframe || !document.contains(trackerIframe)) {
+      trackerIframe = document.createElement('iframe')
+      trackerIframe.id = 'handsfree-offscreen-tracker'
+      trackerIframe.src = trackerUrl
+      trackerIframe.allow = 'camera; microphone'
+      // Position offscreen so requestAnimationFrame continues running at full FPS
+      trackerIframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;border:none;'
+      const mount = document.body || document.documentElement
+      if (mount) {
+        mount.appendChild(trackerIframe)
+      } else {
+        window.addEventListener('DOMContentLoaded', () => {
+          ;(document.body || document.documentElement)?.appendChild(trackerIframe)
+        })
       }
-    })
-    .finally(() => {
-      offscreenCreating = null
-    })
+    }
+    return
+  }
 
-  await offscreenCreating
-}
-
-async function closeOffscreen() {
+  // Strategy 3: Pinned background tab fallback
+  trackerHostType = 'tab'
+  debugLog('background', 'creating pinned background tracker tab fallback')
   try {
-    const offscreen = chrome.offscreen
-    await offscreen.closeDocument()
-  } catch {
-    // Nothing to close.
+    const tab = await api.tabs.create({
+      url: trackerUrl,
+      active: false,
+      pinned: true,
+    })
+    if (tab?.id) {
+      trackerTabId = tab.id
+    }
+  } catch (err) {
+    console.warn('[Handsfree] Note creating background tracker tab:', err?.message || err)
   }
 }
 
+async function closeTrackerHost() {
+  debugLog('background', 'closing tracker host', { trackerHostType })
+  if (trackerHostType === 'offscreen' && api.offscreen?.closeDocument) {
+    try {
+      await api.offscreen.closeDocument()
+    } catch {}
+  } else if (trackerHostType === 'iframe' && trackerIframe) {
+    try {
+      trackerIframe.remove()
+    } catch {}
+    trackerIframe = null
+  } else if (trackerHostType === 'tab' && trackerTabId != null) {
+    try {
+      await api.tabs.remove(trackerTabId)
+    } catch {}
+    trackerTabId = null
+  }
+  trackerHostType = null
+}
+
 function sendToOffscreen(message) {
-  chrome.runtime.sendMessage({ ...message, target: 'offscreen' }, () => void chrome.runtime.lastError)
+  api.runtime.sendMessage({ ...message, target: 'offscreen' }, () => void api.runtime.lastError)
 }
 
 async function loadStoredMode() {
   try {
-    const result = await chrome.storage.sync.get('handsfree_config')
-    const mode = result?.handsfree_config?.mode
-    if (mode === 'face' || mode === 'hand') return mode
+    const storage = api.storage?.sync || api.storage?.local
+    if (storage) {
+      const result = await storage.get('handsfree_config')
+      const mode = result?.handsfree_config?.mode
+      if (mode === 'face' || mode === 'hand') return mode
+    }
   } catch {
     // Fall through to default.
   }
@@ -152,14 +243,14 @@ async function loadStoredMode() {
 async function startTracking() {
   currentMode = await loadStoredMode()
   debugLog('background', 'startTracking', { mode: currentMode })
-  await ensureOffscreen()
+  await ensureTrackerHost()
   sendToOffscreen({ type: 'OFFSCREEN_SET_MODE', mode: currentMode })
   sendToOffscreen({ type: 'OFFSCREEN_START' })
 }
 
 async function stopTracking() {
   sendToOffscreen({ type: 'OFFSCREEN_STOP' })
-  await closeOffscreen()
+  await closeTrackerHost()
 }
 
 function setTrackingEnabled(enabled) {
@@ -176,43 +267,49 @@ function setTrackingEnabled(enabled) {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-chrome.runtime.onInstalled.addListener((details) => {
+api.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    chrome.storage.sync.set({
-      handsfree_config: {
-        mode: 'face',
-        sensitivity: 2.2,
-        deadZone: 0.01,
-        smoothing: 0.15,
-        showWebcamPreview: false,
-        magneticRadius: 64,
-        snapStrength: 0.75,
-        dwellTime: 2500,
-        edgeScroll: true,
-        edgeScrollBand: 0.15,
-        padSpeed: 22,
-      }
-    })
+    const storage = api.storage?.sync || api.storage?.local
+    if (storage) {
+      storage.set({
+        handsfree_config: {
+          mode: 'face',
+          sensitivity: 2.2,
+          deadZone: 0.01,
+          smoothing: 0.15,
+          showWebcamPreview: false,
+          magneticRadius: 64,
+          snapStrength: 0.75,
+          dwellTime: 2500,
+          edgeScroll: true,
+          edgeScrollBand: 0.15,
+          padSpeed: 22,
+        }
+      })
+    }
   }
 })
 
-chrome.tabs.onActivated.addListener((info) => {
-  activeTabId = info.tabId
+api.tabs.onActivated.addListener((info) => {
+  if (isUserTab(info.tabId)) {
+    activeTabId = info.tabId
+  }
 })
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url) {
+api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url && isUserTab(tabId)) {
     registerTab(tabId, tab.url)
   }
 })
 
-chrome.tabs.onRemoved.addListener((tabId) => {
+api.tabs.onRemoved.addListener((tabId) => {
   unregisterTab(tabId)
   if (activeTabId === tabId) activeTabId = null
   if (permissionTabId === tabId) permissionTabId = null
+  if (trackerTabId === tabId) trackerTabId = null
 })
 
-chrome.commands.onCommand.addListener((command) => {
+api.commands?.onCommand?.addListener((command) => {
   if (command === 'toggle-tracking') {
     setTrackingEnabled(!trackingEnabled)
   } else if (command === 'recenter') {
@@ -230,12 +327,12 @@ let isOpeningPermissionTab = false
 function openPermissionTabSingle() {
   if (isOpeningPermissionTab) return
   if (permissionTabId !== null) {
-    chrome.tabs.get(permissionTabId, (tab) => {
-      if (chrome.runtime.lastError || !tab) {
+    api.tabs.get(permissionTabId, (tab) => {
+      if (api.runtime.lastError || !tab) {
         permissionTabId = null
         createPermissionTab()
       } else {
-        chrome.tabs.update(permissionTabId, { active: true })
+        api.tabs.update(permissionTabId, { active: true })
       }
     })
   } else {
@@ -245,7 +342,8 @@ function openPermissionTabSingle() {
 
 function createPermissionTab() {
   isOpeningPermissionTab = true
-  chrome.tabs.create({ url: 'src/offscreen/permission.html' }, (tab) => {
+  const permUrl = api.runtime.getURL('src/offscreen/permission.html')
+  api.tabs.create({ url: permUrl }, (tab) => {
     if (tab?.id) permissionTabId = tab.id
     setTimeout(() => {
       isOpeningPermissionTab = false
@@ -253,9 +351,9 @@ function createPermissionTab() {
   })
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_VERSION') {
-    sendResponse({ version: chrome.runtime.getManifest().version })
+    sendResponse({ version: api.runtime.getManifest().version })
     return true
   }
 
@@ -265,7 +363,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'OPEN_OPTIONS') {
-    chrome.runtime.openOptionsPage()
+    if (typeof api.runtime.openOptionsPage === 'function') {
+      api.runtime.openOptionsPage()
+    }
     return true
   }
 
@@ -282,7 +382,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
-  // Tracking results originate from the offscreen document.
+  // Tracking results originate from the offscreen/tracker document.
   if (message.type === 'TRACKING_RESULT') {
     const payload = message.rawPoint
     debugEvery('background:track', 15, 'result', {
@@ -327,7 +427,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'STATUS_UPDATE') {
     forwardToAllTabs({ type: 'STATUS_UPDATE', ...message })
-    chrome.runtime.sendMessage({ type: 'STATUS_UPDATE', ...message }, () => void chrome.runtime.lastError)
+    api.runtime.sendMessage({ type: 'STATUS_UPDATE', ...message }, () => void api.runtime.lastError)
     sendResponse({ success: true })
     return true
   }

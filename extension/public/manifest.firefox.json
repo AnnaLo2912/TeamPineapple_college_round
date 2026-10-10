@@ -1,0 +1,90 @@
+{
+  "name": "Handsfree",
+  "description": "Voice and webcam-based browsing for accessibility",
+  "version": "1.0.0",
+  "manifest_version": 3,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "handsfree@teampineapple.com",
+      "strict_min_version": "109.0"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.svg",
+    "32": "icons/icon32.svg",
+    "48": "icons/icon48.svg",
+    "128": "icons/icon128.svg"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Handsfree",
+    "default_icon": {
+      "16": "icons/icon16.svg",
+      "32": "icons/icon32.svg",
+      "48": "icons/icon48.svg",
+      "128": "icons/icon128.svg"
+    }
+  },
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "models/*",
+        "models/wasm/*",
+        "icons/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "commands": {
+    "toggle-tracking": {
+      "suggested_key": {
+        "default": "Alt+H",
+        "mac": "Alt+H"
+      },
+      "description": "Toggle handsfree tracking"
+    },
+    "recenter": {
+      "suggested_key": {
+        "default": "Alt+R",
+        "mac": "Alt+R"
+      },
+      "description": "Recenter cursor position"
+    },
+    "next-tab": {
+      "suggested_key": {
+        "default": "Alt+PageDown",
+        "mac": "Alt+PageDown"
+      },
+      "description": "Switch to next tab"
+    },
+    "prev-tab": {
+      "suggested_key": {
+        "default": "Alt+PageUp",
+        "mac": "Alt+PageUp"
+      },
+      "description": "Switch to previous tab"
+    }
+  }
+}

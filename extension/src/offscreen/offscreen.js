@@ -1,3 +1,63 @@
+// Route MediaPipe internal C++ debug/warning logs so Chromium doesn't flag them as extension issues
+globalThis.dbg = function(msg) {
+  console.debug('[MediaPipe WASM]', msg)
+}
+globalThis.custom_dbg = function(msg) {
+  console.debug('[MediaPipe WASM]', msg)
+}
+
+const origError = console.error
+const origWarn = console.warn
+
+const isMediaPipeEngineLog = (text) => {
+  const str = typeof text === 'object' ? (text?.message || text?.stack || JSON.stringify(text) || String(text)) : String(text)
+  return (
+    str.includes('INFO:') ||
+    str.includes('XNNPACK') ||
+    str.includes('TensorFlow Lite') ||
+    str.includes('face_landmarker_graph') ||
+    str.includes('gl_context') ||
+    str.includes('FaceBlendshapesGraph') ||
+    str.includes('NORM_RECT') ||
+    str.includes('landmark_projection_calculator') ||
+    str.includes('OpenGL error checking') ||
+    str.includes('Sets FaceBlendshapesGraph')
+  )
+}
+
+// Emscripten Module hooks: intercept stderr/stdout from WASM before anything else
+globalThis.Module = globalThis.Module || {}
+globalThis.Module.printErr = function(text) {
+  if (isMediaPipeEngineLog(text)) {
+    console.debug('[MediaPipe Info]', text)
+    return
+  }
+  origError.call(console, text)
+}
+globalThis.Module.print = function(text) {
+  console.debug('[MediaPipe stdout]', text)
+}
+
+// Intercept console.error to prevent benign MediaPipe / Emscripten C++ logs from flagging extension issues
+console.error = function(...args) {
+  const msg = args.map(a => (typeof a === 'object' ? (a?.message || a?.stack || JSON.stringify(a) || String(a)) : String(a))).join(' ')
+  if (isMediaPipeEngineLog(msg)) {
+    console.debug('[MediaPipe Info]', ...args)
+    return
+  }
+  origError.apply(console, args)
+}
+
+// Filter benign MediaPipe/Emscripten C++ engine initialization warnings from console.warn
+console.warn = function(...args) {
+  const msg = args.map(a => (typeof a === 'object' ? (a?.message || a?.stack || JSON.stringify(a) || String(a)) : String(a))).join(' ')
+  if (isMediaPipeEngineLog(msg)) {
+    console.debug('[MediaPipe Info]', ...args)
+    return
+  }
+  origWarn.apply(console, args)
+}
+
 import { DEFAULT_CONFIG } from '../shared/types.js'
 import { debugLog, debugEvery } from '../shared/debug.js'
 import { WebcamManager } from './WebcamManager.js'
@@ -34,7 +94,7 @@ async function startTracking() {
     const faceReady = await initFaceTracker()
     debugLog('offscreen', 'face tracker ready:', faceReady)
     if (!faceReady) {
-      console.error('Offscreen: face tracker failed to initialize')
+      console.warn('[Handsfree] Face tracker not ready, retrying on next command')
       return
     }
     if (mode === 'hand' && !isHandTrackerReady()) {
@@ -46,8 +106,19 @@ async function startTracking() {
     running = true
     debugLog('offscreen', 'tracking running')
   } catch (error) {
-    console.error('Offscreen: failed to start tracking', error)
-    debugLog('offscreen', 'startTracking failed -> permission required', error)
+    const isPermissionError =
+      error?.name === 'NotAllowedError' ||
+      error?.name === 'PermissionDeniedError' ||
+      error?.name === 'SecurityError' ||
+      (typeof error?.message === 'string' && error.message.toLowerCase().includes('permission'))
+
+    if (isPermissionError) {
+      debugLog('offscreen', 'Camera permission not yet granted; requesting permission tab from background')
+      console.info('[Handsfree] Camera permission required. Requesting user permission tab...')
+    } else {
+      console.warn('[Handsfree] Failed to start camera tracking:', error?.name || error?.message || error)
+    }
+
     // Throttle camera permission tab opening to avoid infinite creation loops
     const now = Date.now()
     if (now - lastPermissionRequestTime > 8000) {

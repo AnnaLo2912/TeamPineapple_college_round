@@ -33,7 +33,7 @@ export async function initFaceTracker() {
       console.log('[FaceTracker] Initialized successfully with Local assets + GPU delegate.')
       return true
     } catch (gpuErr) {
-      console.warn('[FaceTracker] GPU delegate failed on local assets, trying CPU fallback:', gpuErr)
+      console.info('[FaceTracker] GPU delegate unavailable on local assets, using CPU fallback:', gpuErr?.message || gpuErr)
       faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
         baseOptions: {
           modelAssetPath: modelPath,
@@ -51,7 +51,7 @@ export async function initFaceTracker() {
       return true
     }
   } catch (localError) {
-    console.warn('[FaceTracker] Local asset initialization failed, trying CDN fallback:', localError)
+    console.info('[FaceTracker] Local asset initialization note, attempting CDN fallback:', localError?.message || localError)
   }
 
   // 2. Fallback to CDN assets if local assets fail
@@ -78,7 +78,7 @@ export async function initFaceTracker() {
       console.log('[FaceTracker] Initialized successfully with CDN assets + GPU delegate.')
       return true
     } catch (gpuErr) {
-      console.warn('[FaceTracker] GPU delegate failed on CDN assets, trying CPU fallback:', gpuErr)
+      console.info('[FaceTracker] GPU delegate unavailable on CDN assets, using CPU fallback:', gpuErr?.message || gpuErr)
       faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
         baseOptions: {
           modelAssetPath: cdnModel,
@@ -96,7 +96,7 @@ export async function initFaceTracker() {
       return true
     }
   } catch (cdnError) {
-    console.error('[FaceTracker] Complete initialization failure (Local & CDN):', cdnError)
+    console.warn('[FaceTracker] Complete initialization failure (Local & CDN):', cdnError?.message || cdnError)
     return false
   }
 }
@@ -150,7 +150,7 @@ export async function detectFaceLandmarks(video, timestamp) {
       },
     }
   } catch (error) {
-    console.error('Face detection error:', error)
+    console.debug('[FaceTracker] Face detection frame error:', error?.message || error)
     return { cursorPoint: null, confidence: 0 }
   }
 }

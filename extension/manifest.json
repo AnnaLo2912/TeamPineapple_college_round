@@ -3,6 +3,12 @@
   "name": "Handsfree - Voice Controller & Dictation",
   "version": "1.2.0",
   "description": "Voice-controlled web navigation, voice typing, accessible webpage reading, and Sarvam AI integration.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "handsfree-voice@teampineapple.com",
+      "strict_min_version": "109.0"
+    }
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Handsfree Voice Controller",

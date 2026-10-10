@@ -15,7 +15,7 @@ async function requestCamera() {
 
     window.close()
   } catch (error) {
-    console.error('Camera permission denied:', error)
+    console.warn('[Handsfree] Camera permission not granted:', error?.name || error?.message || error)
     msg.textContent = 'Camera access was denied or unavailable. Click below to try again.'
     retry.style.display = 'inline-block'
   }

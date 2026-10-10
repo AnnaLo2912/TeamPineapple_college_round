@@ -3,6 +3,12 @@
   "description": "Voice and webcam-based browsing for accessibility",
   "version": "1.0.0",
   "manifest_version": 3,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "handsfree@teampineapple.com",
+      "strict_min_version": "109.0"
+    }
+  },
   "icons": {
     "16": "icons/icon16.svg",
     "32": "icons/icon32.svg",
@@ -46,7 +52,8 @@
     {
       "resources": [
         "models/*",
-        "models/wasm/*"
+        "models/wasm/*",
+        "icons/*"
       ],
       "matches": ["<all_urls>"]
     }

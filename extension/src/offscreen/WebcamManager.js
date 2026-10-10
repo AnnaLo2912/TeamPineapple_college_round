@@ -33,10 +33,9 @@ export class WebcamManager {
       this.video.muted = true
 
       if (!videoElement) {
-        // Keep the video in the DOM (some decode paths need it attached) but
-        // park it off-screen so the invisible offscreen page never shows it.
+        // Keep the video in the DOM but park it off-screen
         this.video.style.cssText =
-          'position:fixed;left:-9999px;top:-9999px;width:2px;height:2px;opacity:0;pointer-events:none;'
+          'position:fixed;left:-9999px;top:-9999px;width:640px;height:480px;opacity:0;pointer-events:none;'
         document.body.appendChild(this.video)
         this.ownsVideo = true
       }
@@ -44,11 +43,15 @@ export class WebcamManager {
       await new Promise((resolve, reject) => {
         if (!this.video) return reject(new Error('No video element'))
         this.video.onloadedmetadata = () => {
+          if (this.video) {
+            this.video.width = this.video.videoWidth || 640
+            this.video.height = this.video.videoHeight || 480
+          }
           debugLog('webcam', 'video metadata', {
-            w: this.video.videoWidth,
-            h: this.video.videoHeight,
+            w: this.video?.videoWidth,
+            h: this.video?.videoHeight,
           })
-          this.video.play().then(resolve).catch((err) => {
+          this.video?.play().then(resolve).catch((err) => {
             debugLog('webcam', 'video.play() rejected', err)
             reject(err)
           })

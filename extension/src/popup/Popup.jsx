@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { STORAGE_KEYS } from '../shared/constants.js'
+import { isSupportedPage, getBrowserAPI } from '../shared/browserUtils.js'
+
+const api = getBrowserAPI() || chrome
 
 const Popup = () => {
   const [state, setState] = useState({
@@ -25,14 +28,9 @@ const Popup = () => {
       const faceCal = await getCalibration('face')
       const handCal = await getCalibration('hand')
 
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      api.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const tab = tabs[0]
-        const unsupported = Boolean(!tab?.id ||
-          tab.url?.startsWith('chrome://') ||
-          tab.url?.startsWith('edge://') ||
-          tab.url?.startsWith('about:') ||
-          tab.url?.startsWith('chrome-extension://') ||
-          tab.url?.startsWith('moz-extension://'))
+        const unsupported = Boolean(!tab?.id || !isSupportedPage(tab.url))
 
         setState(prev => ({
           ...prev,
@@ -53,8 +51,8 @@ const Popup = () => {
     }
     init()
 
-    chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (status) => {
-      if (chrome.runtime.lastError || !status) return
+    api.runtime.sendMessage({ type: 'GET_STATUS' }, (status) => {
+      if (api.runtime.lastError || !status) return
       setState(prev => ({
         ...prev,
         isEnabled: !!status.enabled,
@@ -72,14 +70,14 @@ const Popup = () => {
       }
     }
 
-    chrome.runtime.onMessage.addListener(handleStatusUpdate)
+    api.runtime.onMessage.addListener(handleStatusUpdate)
     return () => {
-      chrome.runtime.onMessage.removeListener(handleStatusUpdate)
+      api.runtime.onMessage.removeListener(handleStatusUpdate)
     }
   }, [])
 
   const sendMessage = (type, payload) => {
-    chrome.runtime.sendMessage({ type, ...payload })
+    api.runtime.sendMessage({ type, ...payload })
   }
 
   const updateConfig = async (updates) => {
@@ -121,7 +119,10 @@ const Popup = () => {
 
   const handleClearCalibration = async (mode) => {
     const key = mode === 'face' ? STORAGE_KEYS.CALIBRATION_FACE : STORAGE_KEYS.CALIBRATION_HAND
-    await chrome.storage.sync.remove(key)
+    const storage = api.storage?.sync || api.storage?.local
+    if (storage) {
+      await storage.remove(key)
+    }
     setState(prev => ({
       ...prev,
       hasFaceCalibration: mode === 'face' ? false : prev.hasFaceCalibration,
@@ -163,7 +164,7 @@ const Popup = () => {
       {state.unsupportedPage && (
         <div style={styles.unsupportedBanner}>
           <span>⚠</span>
-          <span>Extension doesn't work on this page (chrome://, settings, etc.)</span>
+          <span>Extension doesn't work on browser internal or restricted pages (settings, web stores, etc.)</span>
           <span>Navigate to a regular website to use Handsfree</span>
         </div>
       )}
@@ -402,9 +403,12 @@ const Popup = () => {
 
 async function loadConfig() {
   try {
-    const result = await chrome.storage.sync.get(STORAGE_KEYS.CONFIG)
-    if (result[STORAGE_KEYS.CONFIG]) {
-      return { ...DEFAULT_CONFIG, ...result[STORAGE_KEYS.CONFIG] }
+    const storage = api.storage?.sync || api.storage?.local
+    if (storage) {
+      const result = await storage.get(STORAGE_KEYS.CONFIG)
+      if (result && result[STORAGE_KEYS.CONFIG]) {
+        return { ...DEFAULT_CONFIG, ...result[STORAGE_KEYS.CONFIG] }
+      }
     }
   } catch (e) {
     console.warn('Failed to load config:', e)
@@ -414,7 +418,10 @@ async function loadConfig() {
 
 async function saveConfig(config) {
   try {
-    await chrome.storage.sync.set({ [STORAGE_KEYS.CONFIG]: config })
+    const storage = api.storage?.sync || api.storage?.local
+    if (storage) {
+      await storage.set({ [STORAGE_KEYS.CONFIG]: config })
+    }
   } catch (e) {
     console.warn('Failed to save config:', e)
   }
@@ -422,8 +429,10 @@ async function saveConfig(config) {
 
 async function getCalibration(mode) {
   try {
+    const storage = api.storage?.sync || api.storage?.local
+    if (!storage) return null
     const key = mode === 'face' ? STORAGE_KEYS.CALIBRATION_FACE : STORAGE_KEYS.CALIBRATION_HAND
-    const result = await chrome.storage.sync.get(key)
+    const result = await storage.get(key)
     return result[key] || null
   } catch {
     return null

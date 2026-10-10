@@ -31,7 +31,7 @@ export async function initHandTracker() {
       console.log('[HandTracker] Initialized successfully with Local assets + GPU delegate.')
       return true
     } catch (gpuErr) {
-      console.warn('[HandTracker] GPU delegate failed on local assets, trying CPU fallback:', gpuErr)
+      console.info('[HandTracker] GPU delegate unavailable on local assets, using CPU fallback:', gpuErr?.message || gpuErr)
       handLandmarker = await HandLandmarker.createFromOptions(filesetResolver, {
         baseOptions: {
           modelAssetPath: modelPath,
@@ -47,7 +47,7 @@ export async function initHandTracker() {
       return true
     }
   } catch (localError) {
-    console.warn('[HandTracker] Local asset initialization failed, trying CDN fallback:', localError)
+    console.info('[HandTracker] Local asset initialization note, attempting CDN fallback:', localError?.message || localError)
   }
 
   // 2. Fallback to CDN assets if local assets fail
@@ -72,7 +72,7 @@ export async function initHandTracker() {
       console.log('[HandTracker] Initialized successfully with CDN assets + GPU delegate.')
       return true
     } catch (gpuErr) {
-      console.warn('[HandTracker] GPU delegate failed on CDN assets, trying CPU fallback:', gpuErr)
+      console.info('[HandTracker] GPU delegate unavailable on CDN assets, using CPU fallback:', gpuErr?.message || gpuErr)
       handLandmarker = await HandLandmarker.createFromOptions(filesetResolver, {
         baseOptions: {
           modelAssetPath: cdnModel,
@@ -88,7 +88,7 @@ export async function initHandTracker() {
       return true
     }
   } catch (cdnError) {
-    console.error('[HandTracker] Complete initialization failure (Local & CDN):', cdnError)
+    console.warn('[HandTracker] Complete initialization failure (Local & CDN):', cdnError?.message || cdnError)
     return false
   }
 }
@@ -127,7 +127,7 @@ export async function detectHandLandmarks(video, timestamp) {
       rawLandmarks: { indexTip, handedness },
     }
   } catch (error) {
-    console.error('Hand detection error:', error)
+    console.debug('[HandTracker] Hand detection frame error:', error?.message || error)
     return { cursorPoint: null, confidence: 0 }
   }
 }

@@ -860,6 +860,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
+   * Safely send message to tab using callback syntax to consume chrome.runtime.lastError
+   * and prevent Chrome from logging Uncaught (in promise) Receiving end does not exist errors
+   */
+  function sendTabMessageSafe(tabId, message) {
+    return new Promise((resolve) => {
+      try {
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+          if (chrome.runtime.lastError) {
+            // Explicitly reading chrome.runtime.lastError marks it as handled in Chromium
+            const _err = chrome.runtime.lastError.message;
+            resolve(null);
+          } else {
+            resolve(response !== undefined ? response : { success: true });
+          }
+        });
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  }
+
+  /**
    * Send message to active Chrome tab with auto-injection fallback and error handling
    */
   async function sendToActiveTab(message) {
@@ -903,13 +925,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return { success: false, error: 'Chrome blocks extensions on chrome:// system pages. Please open Google or any website to use Handsfree.' };
       }
 
-      // 1. Try direct messaging
-      try {
-        const response = await chrome.tabs.sendMessage(activeTab.id, message);
-        if (response !== undefined) return response;
-      } catch (msgErr) {
-        // Connection failed; content script might not be loaded on tab yet
-      }
+      // 1. Try direct messaging safely without throwing unchecked errors
+      const directResponse = await sendTabMessageSafe(activeTab.id, message);
+      if (directResponse) return directResponse;
 
       // 2. Fallback: Programmatically inject content script on demand
       if (chrome.scripting && chrome.scripting.executeScript) {
@@ -921,10 +939,10 @@ document.addEventListener('DOMContentLoaded', () => {
           
           await new Promise(r => setTimeout(r, 120));
 
-          const retryResponse = await chrome.tabs.sendMessage(activeTab.id, message);
-          return retryResponse || { success: true };
+          const retryResponse = await sendTabMessageSafe(activeTab.id, message);
+          if (retryResponse) return retryResponse;
         } catch (injectErr) {
-          console.warn('[Handsfree] Content script injection failed:', injectErr);
+          console.warn('[Handsfree] Content script injection fallback:', injectErr);
           if (message.action === 'EXECUTE_SEARCH' && message.query) {
             await chrome.tabs.update(activeTab.id, { url: `https://www.google.com/search?q=${encodeURIComponent(message.query)}` });
             return { success: true, message: 'Navigating to Google Search...' };
@@ -934,6 +952,12 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           return { success: false, error: 'Cannot access page content on this tab.' };
         }
+      }
+
+      // Final fallback for search actions
+      if (message.action === 'EXECUTE_SEARCH' && message.query) {
+        await chrome.tabs.update(activeTab.id, { url: `https://www.google.com/search?q=${encodeURIComponent(message.query)}` });
+        return { success: true, message: 'Navigating to Google Search...' };
       }
 
       return { success: false, error: 'Could not connect to active page.' };

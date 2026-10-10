@@ -1071,9 +1071,15 @@
       pauseInTabVoiceListening();
 
       if (interrupt) {
-        window.speechSynthesis.cancel();
+        try { window.speechSynthesis.cancel(); } catch (e) {}
       }
-      const utterance = new SpeechSynthesisUtterance(text.trim());
+      const UtteranceClass = window.SpeechSynthesisUtterance;
+      if (!UtteranceClass) {
+        isScreenSpeaking = false;
+        resolve();
+        return;
+      }
+      const utterance = new UtteranceClass(text.trim());
       utterance.rate = 1.05;
       utterance.pitch = 1.0;
       utterance.lang = 'en-US';

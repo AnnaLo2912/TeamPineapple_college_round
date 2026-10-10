@@ -1355,234 +1355,121 @@
   }
 
   // --- In-Tab Continuous Speech Recognition & Eyes-Free Engine ---
-  let inTabVoiceActive = false;
-  let inTabVoiceStatus = 'stopped';
   let blindIndicatorEl = null;
 
-  function ensureBlindIndicatorStyles() {
-    if (document.getElementById('handsfree-blind-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'handsfree-blind-styles';
-    style.textContent = `
-      #handsfree-blind-status-badge {
-        position: fixed !important;
-        bottom: 24px !important;
-        right: 24px !important;
-        background: #0f172a !important;
-        border: 2px solid #f59e0b !important;
-        border-radius: 9999px !important;
-        padding: 8px 16px !important;
-        color: #f8fafc !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-        font-size: 13px !important;
-        font-weight: 600 !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 10px !important;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(245, 158, 11, 0.4) !important;
-        z-index: 2147483647 !important;
-        pointer-events: none !important;
-        transition: all 0.25s ease !important;
-      }
-      .handsfree-status-dot {
-        width: 10px !important;
-        height: 10px !important;
-        border-radius: 50% !important;
-        background: #10b981 !important;
-        display: inline-block !important;
-      }
-      .handsfree-status-dot.pulse {
-        background: #ef4444 !important;
-        animation: handsfree-badge-pulse 1.5s infinite !important;
-      }
-      @keyframes handsfree-badge-pulse {
-        0% { transform: scale(0.95); opacity: 0.8; }
-        50% { transform: scale(1.15); opacity: 1; }
-        100% { transform: scale(0.95); opacity: 0.8; }
-      }
-    `;
-    (document.head || document.documentElement).appendChild(style);
-  }
+  function ensureBlindIndicatorStyles() {}
 
   function updateBlindIndicator(text, isRecording = true) {
     if (!document.body) return;
-    ensureBlindIndicatorStyles();
     if (!blindIndicatorEl) {
       blindIndicatorEl = document.createElement('div');
       blindIndicatorEl.id = 'handsfree-blind-status-badge';
       blindIndicatorEl.setAttribute('role', 'status');
       blindIndicatorEl.setAttribute('aria-live', 'polite');
+      blindIndicatorEl.style.cssText = 'position:fixed!important;bottom:24px!important;right:24px!important;background:#0f172a!important;border:2px solid #f59e0b!important;border-radius:9999px!important;padding:8px 16px!important;color:#f8fafc!important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif!important;font-size:13px!important;font-weight:600!important;display:flex!important;align-items:center!important;gap:10px!important;box-shadow:0 10px 25px -5px rgba(0,0,0,0.5),0 0 15px rgba(245,158,11,0.4)!important;z-index:2147483647!important;pointer-events:none!important;transition:all 0.25s ease!important;';
       document.body.appendChild(blindIndicatorEl);
     }
     blindIndicatorEl.style.display = isBlindModeActive ? 'flex' : 'none';
-    blindIndicatorEl.innerHTML = `
-      <span class="handsfree-status-dot ${isRecording ? 'pulse' : ''}"></span>
-      <span class="handsfree-status-label">${text}</span>
-    `;
+    const dotColor = isRecording ? '#ef4444' : '#10b981';
+    blindIndicatorEl.innerHTML = `<span style="width:10px!important;height:10px!important;border-radius:50%!important;background:${dotColor}!important;display:inline-block!important;"></span><span>${text}</span>`;
   }
 
-  function injectMainWorldVoiceEngine() {
-    if (document.getElementById('handsfree-voice-engine-script')) return;
-    const script = document.createElement('script');
-    script.id = 'handsfree-voice-engine-script';
-    script.textContent = `
-      (function() {
-        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRec) {
-          console.warn('[Handsfree Engine] Web Speech API not supported on this browser.');
-          window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'unsupported' }, '*');
-          return;
-        }
-
-        let recognizer = null;
-        let isListening = false;
-        let isMuted = false;
-        let restartTimer = null;
-
-        function startListening() {
-          if (recognizer) {
-            try { recognizer.abort(); } catch (e) {}
-          }
-
-          try {
-            recognizer = new SpeechRec();
-            recognizer.continuous = true;
-            recognizer.interimResults = false;
-            recognizer.lang = 'en-US';
-            recognizer.maxAlternatives = 1;
-
-            recognizer.onstart = function() {
-              isListening = true;
-              console.log('[Handsfree Voice] In-tab microphone active on page');
-              window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'listening' }, '*');
-            };
-
-            recognizer.onresult = function(event) {
-              if (isMuted) return;
-              for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                  const transcript = (event.results[i][0].transcript || '').trim();
-                  if (transcript) {
-                    console.log('[Handsfree Voice] Speech detected on page:', transcript);
-                    window.postMessage({ type: 'HANDSFREE_VOICE_TRANSCRIPT', transcript: transcript }, '*');
-                  }
-                }
-              }
-            };
-
-            recognizer.onerror = function(event) {
-              console.warn('[Handsfree Voice] Recognition error on page:', event.error);
-              window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'error', error: event.error }, '*');
-            };
-
-            recognizer.onend = function() {
-              if (isListening) {
-                clearTimeout(restartTimer);
-                restartTimer = setTimeout(function() {
-                  if (isListening) {
-                    try {
-                      recognizer.start();
-                    } catch (e) {
-                      startListening();
-                    }
-                  }
-                }, 250);
-              } else {
-                window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'stopped' }, '*');
-              }
-            };
-
-            recognizer.start();
-          } catch (err) {
-            console.warn('[Handsfree Voice] Failed to start speech recognizer:', err);
-            window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'error', error: err.message }, '*');
-          }
-        }
-
-        function stopListening() {
-          isListening = false;
-          clearTimeout(restartTimer);
-          if (recognizer) {
-            try { recognizer.abort(); } catch (e) {}
-          }
-        }
-
-        window.addEventListener('message', function(event) {
-          if (event.source !== window || !event.data || event.data.type !== 'HANDSFREE_VOICE_CMD') return;
-          const action = event.data.action;
-          if (action === 'START') {
-            isListening = true;
-            isMuted = false;
-            startListening();
-          } else if (action === 'STOP') {
-            stopListening();
-          } else if (action === 'MUTE') {
-            isMuted = true;
-          } else if (action === 'UNMUTE') {
-            isMuted = false;
-          }
-        });
-
-        // Announce ready
-        window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'ready' }, '*');
-      })();
-    `;
-
-    (document.head || document.documentElement).appendChild(script);
-  }
+  let inTabVoiceActive = false;
+  let inTabVoiceMuted = false;
+  let inTabRecognizer = null;
+  let inTabRestartTimer = null;
 
   function startInTabVoiceListening() {
     if (!isBlindModeActive) return;
     inTabVoiceActive = true;
-    injectMainWorldVoiceEngine();
-    window.postMessage({ type: 'HANDSFREE_VOICE_CMD', action: 'START' }, '*');
-    updateBlindIndicator('🎤 Listening for "Go to search"...', true);
+    inTabVoiceMuted = false;
+
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      console.warn('[Handsfree Voice] SpeechRecognition API not available in this context.');
+      updateBlindIndicator('⚠️ Voice API unavailable', false);
+      return;
+    }
+
+    if (inTabRecognizer) {
+      try { inTabRecognizer.abort(); } catch (e) {}
+    }
+
+    try {
+      inTabRecognizer = new SpeechRec();
+      inTabRecognizer.continuous = true;
+      inTabRecognizer.interimResults = false;
+      inTabRecognizer.lang = 'en-US';
+      inTabRecognizer.maxAlternatives = 1;
+
+      inTabRecognizer.onstart = function() {
+        console.log('[Handsfree Voice] In-tab microphone active on page');
+        updateBlindIndicator('🎤 Listening: Say "Go to search"', true);
+      };
+
+      inTabRecognizer.onresult = function(event) {
+        if (inTabVoiceMuted || isScreenSpeaking) return;
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            const transcript = (event.results[i][0].transcript || '').trim();
+            if (transcript) {
+              console.log('[Handsfree Voice] Speech detected on page:', transcript);
+              handleInTabVoiceCommand(transcript);
+            }
+          }
+        }
+      };
+
+      inTabRecognizer.onerror = function(event) {
+        console.warn('[Handsfree Voice] Recognition error on page:', event.error);
+        if (event.error === 'not-allowed') {
+          updateBlindIndicator('⚠️ Click mic in address bar to allow', false);
+          speakScreenText('Please allow microphone access in your browser address bar for voice navigation.');
+        }
+      };
+
+      inTabRecognizer.onend = function() {
+        if (inTabVoiceActive && isBlindModeActive) {
+          clearTimeout(inTabRestartTimer);
+          inTabRestartTimer = setTimeout(function() {
+            if (inTabVoiceActive && isBlindModeActive && !isScreenSpeaking) {
+              try {
+                inTabRecognizer.start();
+              } catch (e) {
+                startInTabVoiceListening();
+              }
+            }
+          }, 300);
+        } else {
+          updateBlindIndicator('Stopped', false);
+        }
+      };
+
+      inTabRecognizer.start();
+      updateBlindIndicator('🎤 Listening for "Go to search"...', true);
+    } catch (err) {
+      console.warn('[Handsfree Voice] Failed to start recognizer:', err);
+    }
   }
 
   function stopInTabVoiceListening() {
     inTabVoiceActive = false;
-    window.postMessage({ type: 'HANDSFREE_VOICE_CMD', action: 'STOP' }, '*');
+    clearTimeout(inTabRestartTimer);
+    if (inTabRecognizer) {
+      try { inTabRecognizer.abort(); } catch (e) {}
+    }
     if (blindIndicatorEl) {
       blindIndicatorEl.style.display = 'none';
     }
   }
 
   function pauseInTabVoiceListening() {
-    window.postMessage({ type: 'HANDSFREE_VOICE_CMD', action: 'MUTE' }, '*');
+    inTabVoiceMuted = true;
   }
 
   function resumeInTabVoiceListening() {
-    if (isBlindModeActive && inTabVoiceActive) {
-      window.postMessage({ type: 'HANDSFREE_VOICE_CMD', action: 'UNMUTE' }, '*');
-    }
+    inTabVoiceMuted = false;
   }
-
-  // Handle messages from the in-page speech engine
-  window.addEventListener('message', (event) => {
-    if (event.source !== window || !event.data) return;
-
-    if (event.data.type === 'HANDSFREE_VOICE_TRANSCRIPT') {
-      const transcript = event.data.transcript;
-      if (transcript && isBlindModeActive) {
-        handleInTabVoiceCommand(transcript);
-      }
-    } else if (event.data.type === 'HANDSFREE_VOICE_STATUS') {
-      const status = event.data.status;
-      inTabVoiceStatus = status;
-      if (status === 'listening') {
-        updateBlindIndicator('🎤 Listening: Say "Go to search"', true);
-      } else if (status === 'ready') {
-        if (isBlindModeActive && inTabVoiceActive) {
-          window.postMessage({ type: 'HANDSFREE_VOICE_CMD', action: 'START' }, '*');
-        }
-      } else if (status === 'error') {
-        if (event.data.error === 'not-allowed') {
-          updateBlindIndicator('⚠️ Click mic in address bar to allow', false);
-          speakScreenText('Please allow microphone access in your browser address bar for voice navigation.');
-        }
-      }
-    }
-  });
 
   function handleInTabVoiceCommand(transcript) {
     if (!transcript || isScreenSpeaking) return;

@@ -20,8 +20,30 @@ document.addEventListener('DOMContentLoaded', () => {
   const backendIndicator = document.getElementById('backendIndicator');
   const grantMicBtn = document.getElementById('grantMicBtn');
 
-  // Backend Health Check URL
-  const BACKEND_HEALTH_URL = 'http://localhost:5000/api/health';
+  // Backend Express Base URL (supports 5001 as default to prevent macOS AirPlay port 5000 conflicts, with auto-fallback)
+  let backendBaseUrl = 'http://localhost:5001';
+
+  async function resolveBackendUrl() {
+    for (const port of [5001, 5000]) {
+      try {
+        const res = await fetch(`http://localhost:${port}/api/health`, { method: 'GET' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.status === 'ok') {
+            backendBaseUrl = `http://localhost:${port}`;
+            return backendBaseUrl;
+          }
+        }
+      } catch (e) {
+        // Fallback to next port
+      }
+    }
+    return backendBaseUrl;
+  }
+
+  function getHealthUrl() { return `${backendBaseUrl}/api/health`; }
+  function getTranscribeUrl() { return `${backendBaseUrl}/api/transcribe`; }
+  function getTtsUrl() { return `${backendBaseUrl}/api/tts`; }
 
   // Application State
   const State = {
@@ -114,21 +136,23 @@ document.addEventListener('DOMContentLoaded', () => {
    */
   async function checkBackendHealth() {
     try {
-      const response = await fetch(BACKEND_HEALTH_URL, { method: 'GET' });
+      await resolveBackendUrl();
+      const response = await fetch(getHealthUrl(), { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         if (data && data.status === 'ok') {
           backendIndicator.classList.add('backend-online');
           backendIndicator.classList.remove('backend-offline');
-          backendIndicator.title = 'Express Backend is online';
-          return;
+          backendIndicator.title = `Express Backend is online (${backendBaseUrl})`;
+          return true;
         }
       }
       throw new Error('Invalid backend response');
     } catch (err) {
       backendIndicator.classList.add('backend-offline');
       backendIndicator.classList.remove('backend-online');
-      backendIndicator.title = 'Backend offline (localhost:5000)';
+      backendIndicator.title = `Backend offline (${backendBaseUrl})`;
+      return false;
     }
   }
 
@@ -511,7 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isProcessingTranscript) return;
     isProcessingTranscript = true;
 
-    const TRANSCRIBE_URL = 'http://localhost:5000/api/transcribe';
+    const TRANSCRIBE_URL = getTranscribeUrl();
     setUIState(State.TRANSCRIBING, 'Transcribing audio with Sarvam AI...');
 
     try {
@@ -728,32 +752,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  /**
-   * Check backend express API health
-   */
-  async function checkBackendHealth() {
-    try {
-      const response = await fetch(BACKEND_HEALTH_URL, { method: 'GET' });
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.status === 'ok') {
-          backendIndicator.classList.add('backend-online');
-          backendIndicator.classList.remove('backend-offline');
-          backendIndicator.title = 'Express Backend is online';
-          return;
-        }
-      }
-      throw new Error('Invalid backend response');
-    } catch (err) {
-      backendIndicator.classList.add('backend-offline');
-      backendIndicator.classList.remove('backend-online');
-      backendIndicator.title = 'Backend offline (localhost:5000)';
-    }
-  }
-
   // --- TTS & Webpage Reading Manager ---
-  const BACKEND_TTS_URL = 'http://localhost:5000/api/tts';
-  let ttsAudio = new Audio();
+  let ttsAudio = null;
+  let ttsAudioContext = null;
+  let activeAudioSource = null;
   let readingSections = [];
   let currentReadingIndex = -1;
   let isReadingActive = false;
@@ -773,65 +775,200 @@ document.addEventListener('DOMContentLoaded', () => {
     if (readStopBtn) readStopBtn.disabled = !canStop;
   }
 
-  /**
-   * Synthesize text to speech via Sarvam TTS and play audio
-   * Returns a Promise that resolves only when audio finishes playing naturally
-   */
-  function speakText(text) {
-    return new Promise(async (resolve) => {
-      if (!text || text.trim().length === 0) {
-        resolve();
-        return;
+  function ensureAudioContext() {
+    try {
+      if (!ttsAudioContext || ttsAudioContext.state === 'closed') {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          ttsAudioContext = new AudioCtx();
+        }
       }
-      
-      stopTtsPlayback();
-      stopAudioStream();
+      if (ttsAudioContext && ttsAudioContext.state === 'suspended') {
+        ttsAudioContext.resume().catch(() => {});
+      }
+    } catch (e) {
+      console.warn('[Handsfree AudioContext] Init warning:', e);
+    }
+    return ttsAudioContext;
+  }
 
+  function playBase64WithAudioContext(base64Audio) {
+    return new Promise((resolve, reject) => {
       try {
-        isTtsSpeaking = true;
-        updateReaderUIState('Synthesizing...', false, true);
-        
-        const res = await fetch(BACKEND_TTS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, speaker: 'simran_en_narration', model: 'bulbul:v4-flash' })
-        });
-
-        const data = await res.json();
-        if (!res.ok || !data.success || !data.audio_base64) {
-          throw new Error(data.error || 'TTS synthesis failed');
+        const ctx = ensureAudioContext();
+        if (!ctx) {
+          return reject(new Error('AudioContext not supported'));
         }
 
-        ttsAudio = new Audio(`data:audio/wav;base64,${data.audio_base64}`);
-        
+        const binary = atob(base64Audio);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+
+        ctx.decodeAudioData(bytes.buffer.slice(0), (audioBuffer) => {
+          try {
+            stopTtsPlayback();
+            const source = ctx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(ctx.destination);
+            activeAudioSource = source;
+            isTtsSpeaking = true;
+
+            source.onended = () => {
+              isTtsSpeaking = false;
+              activeAudioSource = null;
+              resolve();
+            };
+
+            source.start(0);
+            updateReaderUIState('Reading...', true, true);
+          } catch (playErr) {
+            reject(playErr);
+          }
+        }, (decodeErr) => {
+          reject(decodeErr || new Error('AudioContext decode failed'));
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  function playHtml5Audio(base64Audio) {
+    return new Promise((resolve, reject) => {
+      try {
+        stopTtsPlayback();
+        const binary = atob(base64Audio);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const blob = new Blob([bytes.buffer], { type: 'audio/wav' });
+        const blobUrl = URL.createObjectURL(blob);
+
+        ttsAudio = new Audio(blobUrl);
+
         ttsAudio.onended = () => {
+          URL.revokeObjectURL(blobUrl);
           isTtsSpeaking = false;
           ttsAudio = null;
           resolve();
         };
 
         ttsAudio.onerror = (e) => {
-          console.error('[Handsfree TTS] Audio playback error:', e);
+          URL.revokeObjectURL(blobUrl);
           isTtsSpeaking = false;
           ttsAudio = null;
-          updateReaderUIState('Playback error', false, false);
-          resolve();
+          reject(new Error('HTML5 Audio playback error'));
         };
 
-        await ttsAudio.play();
-        updateReaderUIState('Reading...', true, true);
-
-      } catch (err) {
-        isTtsSpeaking = false;
-        console.error('[Handsfree TTS] Error speaking text:', err);
-        messageText.textContent = `TTS Error: ${err.message}`;
-        updateReaderUIState('TTS Error', false, false);
-        resolve();
+        const playPromise = ttsAudio.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            isTtsSpeaking = true;
+            updateReaderUIState('Reading...', true, true);
+          }).catch((playErr) => {
+            URL.revokeObjectURL(blobUrl);
+            reject(playErr);
+          });
+        } else {
+          isTtsSpeaking = true;
+          updateReaderUIState('Reading...', true, true);
+        }
+      } catch (e) {
+        reject(e);
       }
     });
   }
 
+  function speakWithBrowserSynth(text) {
+    return new Promise((resolve) => {
+      if (!window.speechSynthesis) {
+        resolve();
+        return;
+      }
+      stopTtsPlayback();
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      utterance.onend = () => {
+        isTtsSpeaking = false;
+        resolve();
+      };
+
+      utterance.onerror = (e) => {
+        console.warn('[Handsfree TTS] Browser speech synthesis error:', e);
+        isTtsSpeaking = false;
+        resolve();
+      };
+
+      isTtsSpeaking = true;
+      updateReaderUIState('Reading...', true, true);
+      window.speechSynthesis.speak(utterance);
+    });
+  }
+
+  /**
+   * Synthesize text to speech via Sarvam TTS (with Web Audio & browser synth fallback)
+   */
+  async function speakText(text) {
+    if (!text || text.trim().length === 0) return;
+
+    stopTtsPlayback();
+    stopAudioStream();
+
+    isTtsSpeaking = true;
+    updateReaderUIState('Synthesizing...', false, true);
+
+    // 1. Try Sarvam TTS via Express backend
+    try {
+      const res = await fetch(getTtsUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, speaker: 'simran_en_narration', model: 'bulbul:v4-flash' })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.audio_base64) {
+        throw new Error(data.error || `TTS synthesis failed with status ${res.status}`);
+      }
+
+      // Play audio: Web Audio API first (no HTMLMediaElement autoplay policy blockage)
+      try {
+        await playBase64WithAudioContext(data.audio_base64);
+        return;
+      } catch (audioCtxErr) {
+        console.warn('[Handsfree TTS] AudioContext playback failed, attempting HTML5 Audio:', audioCtxErr);
+        await playHtml5Audio(data.audio_base64);
+        return;
+      }
+    } catch (sarvamErr) {
+      console.warn('[Handsfree TTS] Sarvam TTS playback failed, falling back to browser SpeechSynthesis:', sarvamErr);
+    }
+
+    // 2. Resilient Fallback: Browser Native SpeechSynthesis
+    try {
+      await speakWithBrowserSynth(text);
+    } catch (synthErr) {
+      console.error('[Handsfree TTS] All TTS methods failed:', synthErr);
+      isTtsSpeaking = false;
+      messageText.textContent = `TTS Error: ${synthErr.message}`;
+      updateReaderUIState('TTS Error', false, false);
+    }
+  }
+
   function stopTtsPlayback() {
+    if (activeAudioSource) {
+      try {
+        activeAudioSource.stop();
+      } catch (e) {}
+      activeAudioSource = null;
+    }
     if (ttsAudio) {
       ttsAudio.onended = null;
       ttsAudio.onerror = null;
@@ -840,6 +977,11 @@ document.addEventListener('DOMContentLoaded', () => {
         ttsAudio.currentTime = 0;
       } catch (e) {}
       ttsAudio = null;
+    }
+    if (window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
     }
     isTtsSpeaking = false;
   }
@@ -899,16 +1041,41 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function pauseOrResumeReading() {
-    if (!ttsAudio || !ttsAudio.src) return;
-
-    if (ttsAudio.paused) {
-      ttsAudio.play();
-      isTtsSpeaking = true;
-      updateReaderUIState('Reading...', true, true);
-    } else {
-      ttsAudio.pause();
+    if (ttsAudioContext && ttsAudioContext.state === 'running') {
+      ttsAudioContext.suspend();
       isTtsSpeaking = false;
       updateReaderUIState('Paused', true, true);
+      return;
+    } else if (ttsAudioContext && ttsAudioContext.state === 'suspended') {
+      ttsAudioContext.resume();
+      isTtsSpeaking = true;
+      updateReaderUIState('Reading...', true, true);
+      return;
+    }
+
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+        isTtsSpeaking = true;
+        updateReaderUIState('Reading...', true, true);
+      } else {
+        window.speechSynthesis.pause();
+        isTtsSpeaking = false;
+        updateReaderUIState('Paused', true, true);
+      }
+      return;
+    }
+
+    if (ttsAudio) {
+      if (ttsAudio.paused) {
+        ttsAudio.play().catch(() => {});
+        isTtsSpeaking = true;
+        updateReaderUIState('Reading...', true, true);
+      } else {
+        ttsAudio.pause();
+        isTtsSpeaking = false;
+        updateReaderUIState('Paused', true, true);
+      }
     }
   }
 
@@ -1025,7 +1192,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Event Listeners ---
 
-  startBtn.addEventListener('click', startRecording);
+  startBtn.addEventListener('click', () => {
+    ensureAudioContext();
+    startRecording();
+  });
 
   stopBtn.addEventListener('click', stopRecording);
 
@@ -1033,12 +1203,24 @@ document.addEventListener('DOMContentLoaded', () => {
   if (modeDictationBtn) modeDictationBtn.addEventListener('click', () => setActiveMode(Mode.DICTATION));
   if (modeReadingBtn) modeReadingBtn.addEventListener('click', () => setActiveMode(Mode.READING));
 
-  if (readPlayBtn) readPlayBtn.addEventListener('click', startReadingPage);
+  if (readPlayBtn) readPlayBtn.addEventListener('click', () => {
+    ensureAudioContext();
+    startReadingPage();
+  });
   if (readPauseBtn) readPauseBtn.addEventListener('click', pauseOrResumeReading);
   if (readStopBtn) readStopBtn.addEventListener('click', stopReadingPage);
-  if (prevSecBtn) prevSecBtn.addEventListener('click', readPreviousSection);
-  if (nextSecBtn) nextSecBtn.addEventListener('click', readNextSection);
-  if (repeatSecBtn) repeatSecBtn.addEventListener('click', repeatCurrentSection);
+  if (prevSecBtn) prevSecBtn.addEventListener('click', () => {
+    ensureAudioContext();
+    readPreviousSection();
+  });
+  if (nextSecBtn) nextSecBtn.addEventListener('click', () => {
+    ensureAudioContext();
+    readNextSection();
+  });
+  if (repeatSecBtn) repeatSecBtn.addEventListener('click', () => {
+    ensureAudioContext();
+    repeatCurrentSection();
+  });
 
   if (grantMicBtn) {
     grantMicBtn.addEventListener('click', openPermissionTab);

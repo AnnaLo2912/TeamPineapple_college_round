@@ -74,3 +74,5 @@ reports/generated/
 *.pem
 *.key
 *.crt
+
+test-ref/

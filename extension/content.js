@@ -1030,6 +1030,7 @@
 
   let screenDictatorDebounceTimer = null;
   let lastSpokenScreenText = '';
+  let isScreenSpeaking = false;
 
   function speakScreenText(text, interrupt = true) {
     return new Promise((resolve) => {
@@ -1037,6 +1038,9 @@
         resolve();
         return;
       }
+      isScreenSpeaking = true;
+      pauseInTabVoiceListening();
+
       if (interrupt) {
         window.speechSynthesis.cancel();
       }
@@ -1044,8 +1048,16 @@
       utterance.rate = 1.05;
       utterance.pitch = 1.0;
       utterance.lang = 'en-US';
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
+
+      const finish = () => {
+        isScreenSpeaking = false;
+        setTimeout(() => {
+          resumeInTabVoiceListening();
+        }, 300);
+        resolve();
+      };
+      utterance.onend = finish;
+      utterance.onerror = finish;
       window.speechSynthesis.speak(utterance);
     });
   }
@@ -1132,17 +1144,19 @@
     const selectors = [
       'textarea[name="q"]',
       'input[name="q"]',
+      'textarea[aria-label*="Search" i]',
+      'input[aria-label*="Search" i]',
       '[role="searchbox"]',
       'input[type="search"]',
       'input[title*="Search" i]',
-      'input[aria-label*="Search" i]',
-      'textarea[aria-label*="Search" i]',
       'input[placeholder*="Search" i]',
-      'input#search'
+      'input#search',
+      'form[role="search"] textarea',
+      'form[role="search"] input'
     ];
     for (const sel of selectors) {
       const el = document.querySelector(sel);
-      if (el && el.offsetParent !== null && !el.disabled) {
+      if (el && !el.disabled && (el.offsetParent !== null || el.getClientRects().length > 0)) {
         return el;
       }
     }
@@ -1160,6 +1174,8 @@
     eyesFreeSearchInput = input;
     lastFocusedElement = input;
 
+    ensureBlindIndicatorStyles();
+
     // Smooth animated glide into center
     input.scrollIntoView({ behavior: 'smooth', block: 'center' });
     input.focus();
@@ -1169,8 +1185,8 @@
     const origBoxShadow = input.style.boxShadow;
     const origTransition = input.style.transition;
     input.style.transition = 'all 0.3s ease';
-    input.style.outline = '4px solid #6366f1';
-    input.style.boxShadow = '0 0 24px rgba(99, 102, 241, 0.7)';
+    input.style.outline = '4px solid #f59e0b';
+    input.style.boxShadow = '0 0 24px rgba(245, 158, 11, 0.8)';
 
     setTimeout(() => {
       input.style.outline = origOutline;
@@ -1179,6 +1195,7 @@
     }, 3500);
 
     playEarconFocus();
+    updateBlindIndicator('🔍 Focused Search Bar', false);
     speakScreenText('Search bar ready. Speak your query, then say Done.');
     return { success: true, message: 'Glided to search input and focused' };
   }
@@ -1309,6 +1326,357 @@
     return { success: true, number: targetNum, title: item.title, url: item.url };
   }
 
+  // --- In-Tab Continuous Speech Recognition & Eyes-Free Engine ---
+  let inTabVoiceActive = false;
+  let inTabVoiceStatus = 'stopped';
+  let blindIndicatorEl = null;
+
+  function ensureBlindIndicatorStyles() {
+    if (document.getElementById('handsfree-blind-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'handsfree-blind-styles';
+    style.textContent = `
+      #handsfree-blind-status-badge {
+        position: fixed !important;
+        bottom: 24px !important;
+        right: 24px !important;
+        background: #0f172a !important;
+        border: 2px solid #f59e0b !important;
+        border-radius: 9999px !important;
+        padding: 8px 16px !important;
+        color: #f8fafc !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(245, 158, 11, 0.4) !important;
+        z-index: 2147483647 !important;
+        pointer-events: none !important;
+        transition: all 0.25s ease !important;
+      }
+      .handsfree-status-dot {
+        width: 10px !important;
+        height: 10px !important;
+        border-radius: 50% !important;
+        background: #10b981 !important;
+        display: inline-block !important;
+      }
+      .handsfree-status-dot.pulse {
+        background: #ef4444 !important;
+        animation: handsfree-badge-pulse 1.5s infinite !important;
+      }
+      @keyframes handsfree-badge-pulse {
+        0% { transform: scale(0.95); opacity: 0.8; }
+        50% { transform: scale(1.15); opacity: 1; }
+        100% { transform: scale(0.95); opacity: 0.8; }
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function updateBlindIndicator(text, isRecording = true) {
+    if (!document.body) return;
+    ensureBlindIndicatorStyles();
+    if (!blindIndicatorEl) {
+      blindIndicatorEl = document.createElement('div');
+      blindIndicatorEl.id = 'handsfree-blind-status-badge';
+      blindIndicatorEl.setAttribute('role', 'status');
+      blindIndicatorEl.setAttribute('aria-live', 'polite');
+      document.body.appendChild(blindIndicatorEl);
+    }
+    blindIndicatorEl.style.display = isBlindModeActive ? 'flex' : 'none';
+    blindIndicatorEl.innerHTML = `
+      <span class="handsfree-status-dot ${isRecording ? 'pulse' : ''}"></span>
+      <span class="handsfree-status-label">${text}</span>
+    `;
+  }
+
+  function injectMainWorldVoiceEngine() {
+    if (document.getElementById('handsfree-voice-engine-script')) return;
+    const script = document.createElement('script');
+    script.id = 'handsfree-voice-engine-script';
+    script.textContent = `
+      (function() {
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRec) {
+          console.warn('[Handsfree Engine] Web Speech API not supported on this browser.');
+          window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'unsupported' }, '*');
+          return;
+        }
+
+        let recognizer = null;
+        let isListening = false;
+        let isMuted = false;
+        let restartTimer = null;
+
+        function startListening() {
+          if (recognizer) {
+            try { recognizer.abort(); } catch (e) {}
+          }
+
+          try {
+            recognizer = new SpeechRec();
+            recognizer.continuous = true;
+            recognizer.interimResults = false;
+            recognizer.lang = 'en-US';
+            recognizer.maxAlternatives = 1;
+
+            recognizer.onstart = function() {
+              isListening = true;
+              console.log('[Handsfree Voice] In-tab microphone active on page');
+              window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'listening' }, '*');
+            };
+
+            recognizer.onresult = function(event) {
+              if (isMuted) return;
+              for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                  const transcript = (event.results[i][0].transcript || '').trim();
+                  if (transcript) {
+                    console.log('[Handsfree Voice] Speech detected on page:', transcript);
+                    window.postMessage({ type: 'HANDSFREE_VOICE_TRANSCRIPT', transcript: transcript }, '*');
+                  }
+                }
+              }
+            };
+
+            recognizer.onerror = function(event) {
+              console.warn('[Handsfree Voice] Recognition error on page:', event.error);
+              window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'error', error: event.error }, '*');
+            };
+
+            recognizer.onend = function() {
+              if (isListening) {
+                clearTimeout(restartTimer);
+                restartTimer = setTimeout(function() {
+                  if (isListening) {
+                    try {
+                      recognizer.start();
+                    } catch (e) {
+                      startListening();
+                    }
+                  }
+                }, 250);
+              } else {
+                window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'stopped' }, '*');
+              }
+            };
+
+            recognizer.start();
+          } catch (err) {
+            console.warn('[Handsfree Voice] Failed to start speech recognizer:', err);
+            window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'error', error: err.message }, '*');
+          }
+        }
+
+        function stopListening() {
+          isListening = false;
+          clearTimeout(restartTimer);
+          if (recognizer) {
+            try { recognizer.abort(); } catch (e) {}
+          }
+        }
+
+        window.addEventListener('message', function(event) {
+          if (event.source !== window || !event.data || event.data.type !== 'HANDSFREE_VOICE_CMD') return;
+          const action = event.data.action;
+          if (action === 'START') {
+            isListening = true;
+            isMuted = false;
+            startListening();
+          } else if (action === 'STOP') {
+            stopListening();
+          } else if (action === 'MUTE') {
+            isMuted = true;
+          } else if (action === 'UNMUTE') {
+            isMuted = false;
+          }
+        });
+
+        // Announce ready
+        window.postMessage({ type: 'HANDSFREE_VOICE_STATUS', status: 'ready' }, '*');
+      })();
+    `;
+
+    (document.head || document.documentElement).appendChild(script);
+  }
+
+  function startInTabVoiceListening() {
+    if (!isBlindModeActive) return;
+    inTabVoiceActive = true;
+    injectMainWorldVoiceEngine();
+    window.postMessage({ type: 'HANDSFREE_VOICE_CMD', action: 'START' }, '*');
+    updateBlindIndicator('🎤 Listening for "Go to search"...', true);
+  }
+
+  function stopInTabVoiceListening() {
+    inTabVoiceActive = false;
+    window.postMessage({ type: 'HANDSFREE_VOICE_CMD', action: 'STOP' }, '*');
+    if (blindIndicatorEl) {
+      blindIndicatorEl.style.display = 'none';
+    }
+  }
+
+  function pauseInTabVoiceListening() {
+    window.postMessage({ type: 'HANDSFREE_VOICE_CMD', action: 'MUTE' }, '*');
+  }
+
+  function resumeInTabVoiceListening() {
+    if (isBlindModeActive && inTabVoiceActive) {
+      window.postMessage({ type: 'HANDSFREE_VOICE_CMD', action: 'UNMUTE' }, '*');
+    }
+  }
+
+  // Handle messages from the in-page speech engine
+  window.addEventListener('message', (event) => {
+    if (event.source !== window || !event.data) return;
+
+    if (event.data.type === 'HANDSFREE_VOICE_TRANSCRIPT') {
+      const transcript = event.data.transcript;
+      if (transcript && isBlindModeActive) {
+        handleInTabVoiceCommand(transcript);
+      }
+    } else if (event.data.type === 'HANDSFREE_VOICE_STATUS') {
+      const status = event.data.status;
+      inTabVoiceStatus = status;
+      if (status === 'listening') {
+        updateBlindIndicator('🎤 Listening: Say "Go to search"', true);
+      } else if (status === 'ready') {
+        if (isBlindModeActive && inTabVoiceActive) {
+          window.postMessage({ type: 'HANDSFREE_VOICE_CMD', action: 'START' }, '*');
+        }
+      } else if (status === 'error') {
+        if (event.data.error === 'not-allowed') {
+          updateBlindIndicator('⚠️ Click mic in address bar to allow', false);
+          speakScreenText('Please allow microphone access in your browser address bar for voice navigation.');
+        }
+      }
+    }
+  });
+
+  function handleInTabVoiceCommand(transcript) {
+    if (!transcript || isScreenSpeaking) return;
+    const clean = transcript.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+    console.log('[Handsfree InTab Command] Heard:', clean);
+
+    updateBlindIndicator(`🗣️ "${clean}"`, false);
+    setTimeout(() => {
+      if (isBlindModeActive && inTabVoiceActive) {
+        updateBlindIndicator('🎤 Listening: Say "Go to search"', true);
+      }
+    }, 3000);
+
+    // Normalize word numbers 1-10
+    const wordNums = { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10' };
+    let norm = clean;
+    for (const [w, d] of Object.entries(wordNums)) {
+      norm = norm.replace(new RegExp(`\\b${w}\\b`, 'g'), d);
+    }
+
+    // 1. Direct Search Bar Auto-Focus & Glide
+    if (
+      norm === 'cursor go to search' ||
+      norm === 'go to search' ||
+      norm === 'search bar' ||
+      norm === 'focus search' ||
+      norm === 'find search' ||
+      norm === 'search input'
+    ) {
+      glideToSearchInput();
+      return;
+    }
+
+    // 2. Query Done
+    if (norm === 'done' || norm === 'finished' || norm === 'query done' || norm === 'done typing' || norm === 'search done') {
+      finishQuery();
+      return;
+    }
+
+    // 3. Execute Search
+    if (norm === 'search' || norm === 'execute search' || norm === 'submit search' || norm === 'run search' || norm === 'google search') {
+      executeSearchQuery();
+      return;
+    }
+
+    // 4. Read Links / Results
+    if (norm === 'read links' || norm === 'read results' || norm === 'read top links' || norm === 'read search results' || norm === 'read result links') {
+      readSearchResults();
+      return;
+    }
+
+    // 5. Click Link N / Result N
+    const clickMatch = norm.match(/^(?:click|open)\s+(?:link\s+|result\s+)?(\d{1,2})$/) || norm.match(/^(?:link|result)\s+(\d{1,2})$/);
+    if (clickMatch && clickMatch[1]) {
+      const num = parseInt(clickMatch[1], 10);
+      const res = clickSearchResult(num);
+      if (!res.success) {
+        clickNumberedLink(num);
+      }
+      return;
+    }
+
+    // 6. Scroll
+    if (norm === 'scroll down' || norm === 'page down') {
+      window.scrollBy({ top: window.innerHeight * 0.75, behavior: 'smooth' });
+      playEarconClick();
+      return;
+    }
+    if (norm === 'scroll up' || norm === 'page up') {
+      window.scrollBy({ top: -window.innerHeight * 0.75, behavior: 'smooth' });
+      playEarconClick();
+      return;
+    }
+
+    // 7. Clear Text
+    if (norm === 'clear' || norm === 'clear text' || norm === 'clear input' || norm === 'clear search') {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement)) {
+        activeEl.value = '';
+        activeEl.dispatchEvent(new Event('input', { bubbles: true }));
+        activeEl.dispatchEvent(new Event('change', { bubbles: true }));
+        playEarconClick();
+        speakScreenText('Cleared text.');
+      }
+      return;
+    }
+
+    // 8. Stop / Cancel
+    if (norm === 'stop' || norm === 'stop reading' || norm === 'cancel') {
+      window.speechSynthesis.cancel();
+      playEarconClick();
+      return;
+    }
+
+    // 9. Dictate into Active Input
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement)) {
+      let payload = transcript;
+      let trailing = null;
+
+      if (/\b(?:done|finished)$/i.test(payload)) {
+        trailing = 'done';
+        payload = payload.replace(/\b(?:done|finished)$/i, '').trim();
+      } else if (/\b(?:search)$/i.test(payload)) {
+        trailing = 'search';
+        payload = payload.replace(/\b(?:search)$/i, '').trim();
+      }
+
+      if (payload) {
+        insertDictatedText(payload);
+        playEarconDictationStart();
+      }
+
+      if (trailing === 'done') {
+        setTimeout(() => finishQuery(), 300);
+      } else if (trailing === 'search') {
+        setTimeout(() => executeSearchQuery(), 400);
+      }
+      return;
+    }
+  }
+
   // --- Eyes-Free Blind Mode Activation & Persistence ---
 
   function setBlindMode(enabled) {
@@ -1318,6 +1686,7 @@
     if (isBlindModeActive) {
       playEarconActivate();
       speakScreenText('Eyes-Free Blind Navigation enabled.');
+      startInTabVoiceListening();
 
       const isGoogle = /google\.[a-z.]+/i.test(window.location.hostname);
       const isSearch = window.location.pathname.includes('/search');
@@ -1330,6 +1699,7 @@
         }, 800);
       }
     } else {
+      stopInTabVoiceListening();
       speakScreenText('Eyes-Free Blind Navigation disabled.');
     }
     return { success: true, isBlindMode: isBlindModeActive };
@@ -1345,6 +1715,7 @@
 
       setTimeout(() => {
         playEarconActivate();
+        startInTabVoiceListening();
         if (isGoogle && !isSearch) {
           glideToSearchInput();
         } else if (isGoogle && isSearch) {

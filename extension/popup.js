@@ -579,6 +579,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (enabled) {
       setActiveMode(Mode.BLIND);
+      if (currentState === State.IDLE) {
+        ensureAudioContext();
+        startRecording();
+      }
     } else if (activeMode === Mode.BLIND) {
       setActiveMode(Mode.COMMAND);
     }

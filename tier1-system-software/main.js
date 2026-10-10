@@ -34,6 +34,9 @@ async function init() {
   // Start background microphone listener & interactive console
   startMicrophoneListener()
   startInteractiveConsole()
+
+  // Keep-alive timer so the assistant never terminates unexpectedly
+  setInterval(() => {}, 1000 * 60 * 60)
 }
 
 init().catch(console.error)

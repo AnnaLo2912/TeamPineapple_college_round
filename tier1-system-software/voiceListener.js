@@ -75,7 +75,7 @@ export async function processVoiceInput(input) {
 export function startMicrophoneListener() {
   const psScriptPath = path.join(__dirname, 'listenMic.ps1')
 
-  micProcess = spawn('powershell', [
+  micProcess = spawn('powershell.exe', [
     '-NoProfile',
     '-ExecutionPolicy', 'Bypass',
     '-File', psScriptPath
@@ -96,8 +96,26 @@ export function startMicrophoneListener() {
           void processVoiceInput(recognizedText)
         }
       } else if (trimmed.startsWith('LISTENER_ERROR:')) {
-        console.warn(`[Live Mic] Note: ${trimmed}`)
+        console.warn(`[Live Mic] Audio Note: ${trimmed}`)
       }
+    }
+  })
+
+  micProcess.stderr.on('data', (data) => {
+    const errText = data.toString().trim()
+    if (errText) {
+      console.warn(`[Live Mic Stderr]: ${errText}`)
+    }
+  })
+
+  micProcess.on('error', (err) => {
+    console.error(`[Live Mic Spawn Error]:`, err)
+  })
+
+  micProcess.on('exit', (code, signal) => {
+    if (code !== 0 && code !== null) {
+      console.warn(`[Live Mic] Listener process exited (code ${code}). Restarting in 2s...`)
+      setTimeout(startMicrophoneListener, 2000)
     }
   })
 

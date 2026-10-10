@@ -17,6 +17,7 @@ export async function executeCommand(rawCommand) {
     cmd.includes('file explorer') ||
     cmd.includes('open files') ||
     cmd.includes('explorer') ||
+    cmd.includes('folder') ||
     cmd.includes('extort') ||
     cmd.includes('taco liar') ||
     cmd === 'files'
@@ -29,14 +30,14 @@ export async function executeCommand(rawCommand) {
 
   if (
     cmd.includes('google') ||
-    cmd.includes('open browser') ||
     cmd.includes('browser') ||
-    cmd.includes('goggle') ||
-    cmd === 'internet'
+    cmd.includes('chrome') ||
+    cmd.includes('internet') ||
+    cmd.includes('goggle')
   ) {
     playEarcon('success')
     speak('Opening Google Search in browser')
-    exec('start https://www.google.com')
+    exec('start "" "https://www.google.com"')
     return true
   }
 
@@ -44,7 +45,7 @@ export async function executeCommand(rawCommand) {
     cmd.includes('notepad') ||
     cmd.includes('text editor') ||
     cmd.includes('textile') ||
-    cmd === 'notes'
+    cmd.includes('notes')
   ) {
     playEarcon('success')
     speak('Opening Notepad')

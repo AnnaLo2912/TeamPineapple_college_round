@@ -2,7 +2,6 @@
 Add-Type -AssemblyName System.Speech
 
 try {
-    # Dynamically select installed recognizer (e.g. en-US)
     $rec = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Select-Object -First 1
     if ($rec -ne $null) {
         $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($rec.Culture)
@@ -13,46 +12,23 @@ try {
     $engine.SetInputToDefaultAudioDevice()
 
     $commands = @(
-        'open file explorer',
-        'file explorer',
-        'open files',
-        'files',
-        'explorer',
-        'open google',
-        'google',
-        'open browser',
-        'browser',
-        'google search',
-        'open notepad',
-        'notepad',
-        'text editor',
-        'open calculator',
-        'calculator',
-        'calc',
-        'open settings',
-        'settings',
-        'open task manager',
-        'task manager',
-        'what is on screen',
-        'what is on my screen',
-        'read screen',
-        'active window',
-        'desktop',
-        'list windows',
-        'open windows',
-        'minimize window',
-        'minimize',
-        'close window',
-        'close',
-        'switch window',
-        'next window',
-        'volume up',
-        'increase volume',
-        'volume down',
-        'decrease volume',
-        'mute',
-        'unmute',
-        'help'
+        'open google', 'google', 'open browser', 'browser', 'google chrome', 'chrome', 'google search', 'open internet', 'internet',
+        'open file explorer', 'file explorer', 'open files', 'files', 'explorer', 'open my files', 'folders',
+        'open notepad', 'notepad', 'text editor', 'open notes', 'notes',
+        'open calculator', 'calculator', 'calc',
+        'open settings', 'settings', 'windows settings',
+        'open task manager', 'task manager',
+        'what is on screen', 'what is on my screen', "what's on screen", 'read screen', 'screen', 'active window', 'current window', 'desktop', 'the desktop', 'where am i',
+        'list windows', 'open windows', 'what windows are open',
+        'minimize window', 'minimize',
+        'close window', 'close',
+        'switch window', 'next window',
+        'volume up', 'increase volume',
+        'volume down', 'decrease volume',
+        'mute', 'unmute',
+        'help',
+        # Phonetic variants
+        'the index topped', 'next stop', 'x taco liar', 'textile', 'ie to extort all'
     )
 
     $choices = New-Object System.Speech.Recognition.Choices
@@ -62,8 +38,6 @@ try {
         $gb.Culture = $rec.Culture
     }
 
-    # IMPORTANT: ONLY load the constrained CommandGrammar!
-    # DO NOT load DictationGrammar so the engine is strictly forced to snap to our commands.
     $commandGrammar = New-Object System.Speech.Recognition.Grammar($gb)
     $commandGrammar.Name = "SystemCommands"
     $engine.LoadGrammar($commandGrammar)
@@ -72,14 +46,17 @@ try {
     [Console]::Out.Flush()
 
     while ($true) {
-        # Perform constrained recognition on default laptop microphone
-        $result = $engine.Recognize()
-        if ($result -ne $null -and $result.Text -ne $null) {
-            $recognizedText = $result.Text.Trim()
-            if ($recognizedText.Length -gt 0) {
-                Write-Output "RECOGNIZED:$recognizedText"
-                [Console]::Out.Flush()
+        try {
+            $result = $engine.Recognize([TimeSpan]::FromSeconds(3))
+            if ($result -ne $null -and $result.Text -ne $null) {
+                $recognizedText = $result.Text.Trim()
+                if ($recognizedText.Length -gt 0) {
+                    Write-Output "RECOGNIZED:$recognizedText"
+                    [Console]::Out.Flush()
+                }
             }
+        } catch {
+            Start-Sleep -Milliseconds 150
         }
     }
 } catch {

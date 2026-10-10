@@ -215,6 +215,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   unregisterTab(tabId)
   if (activeTabId === tabId) activeTabId = null
+  if (permissionTabId === tabId) permissionTabId = null
 })
 
 chrome.commands.onCommand.addListener((command) => {
@@ -228,6 +229,35 @@ chrome.commands.onCommand.addListener((command) => {
     switchTab(-1)
   }
 })
+
+let permissionTabId: number | null = null
+let isOpeningPermissionTab = false
+
+function openPermissionTabSingle() {
+  if (isOpeningPermissionTab) return
+  if (permissionTabId !== null) {
+    chrome.tabs.get(permissionTabId, (tab) => {
+      if (chrome.runtime.lastError || !tab) {
+        permissionTabId = null
+        createPermissionTab()
+      } else {
+        chrome.tabs.update(permissionTabId, { active: true })
+      }
+    })
+  } else {
+    createPermissionTab()
+  }
+}
+
+function createPermissionTab() {
+  isOpeningPermissionTab = true
+  chrome.tabs.create({ url: 'src/offscreen/permission.html' }, (tab) => {
+    if (tab?.id) permissionTabId = tab.id
+    setTimeout(() => {
+      isOpeningPermissionTab = false
+    }, 2000)
+  })
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_VERSION') {
@@ -252,7 +282,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       debugLog('background', 'TAB_REGISTER', { tabId: sender.tab.id, url: sender.tab.url })
     }
     sendResponse({ success: true })
-    if (trackingEnabled) {
+    if (trackingEnabled && permissionTabId === null) {
       void startTracking()
     }
     return true
@@ -278,13 +308,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'CAMERA_PERMISSION_REQUIRED') {
     debugLog('background', 'camera permission required -> opening permission tab')
-    chrome.tabs.create({ url: 'src/offscreen/permission.html' })
+    openPermissionTabSingle()
     sendResponse({ success: true })
     return true
   }
 
   if (message.type === 'CAMERA_GRANTED') {
     debugLog('background', 'camera granted')
+    permissionTabId = null
     void startTracking()
     sendResponse({ success: true })
     return true

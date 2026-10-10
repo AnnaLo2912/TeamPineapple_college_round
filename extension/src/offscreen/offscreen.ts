@@ -22,6 +22,8 @@ function send(message: any) {
   }
 }
 
+let lastPermissionRequestTime = 0
+
 async function startTracking(): Promise<void> {
   if (running || starting) {
     debugLog('offscreen', 'startTracking skipped', { running, starting })
@@ -47,8 +49,12 @@ async function startTracking(): Promise<void> {
   } catch (error) {
     console.error('Offscreen: failed to start tracking', error)
     debugLog('offscreen', 'startTracking failed -> permission required', error)
-    // Most likely the camera permission has not been granted to the extension.
-    send({ type: 'CAMERA_PERMISSION_REQUIRED' })
+    // Throttle camera permission tab opening to avoid infinite creation loops
+    const now = Date.now()
+    if (now - lastPermissionRequestTime > 8000) {
+      lastPermissionRequestTime = now
+      send({ type: 'CAMERA_PERMISSION_REQUIRED' })
+    }
   } finally {
     starting = false
   }

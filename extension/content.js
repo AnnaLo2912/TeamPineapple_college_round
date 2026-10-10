@@ -44,10 +44,41 @@
   }, true);
 
   /**
+   * Set native input/textarea value without triggering prototype Illegal invocation
+   */
+  function setElementNativeValue(el, val) {
+    if (!el) return;
+    try {
+      const isTextArea = el instanceof HTMLTextAreaElement || (el.tagName && el.tagName.toLowerCase() === 'textarea');
+      const proto = isTextArea ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      if (setter) {
+        setter.call(el, val);
+      } else {
+        el.value = val;
+      }
+    } catch (e) {
+      try {
+        el.value = val;
+      } catch (err) {
+        console.warn('[Handsfree] Failed to set element value:', err);
+      }
+    }
+  }
+
+  /**
    * Safely insert dictated text into target input without auto-submitting forms
    */
   function insertDictatedText(text) {
     let target = lastFocusedElement || document.activeElement;
+
+    if (!target || !isEditableElement(target)) {
+      target = eyesFreeSearchInput || findPrimarySearchInput();
+      if (target && isEditableElement(target)) {
+        lastFocusedElement = target;
+        try { target.focus(); } catch (e) {}
+      }
+    }
 
     if (!target || !isEditableElement(target)) {
       return { success: false, error: 'No focused text field found in current question.' };
@@ -68,21 +99,11 @@
       const inserted = prefixSpace + text;
       const newValue = value.slice(0, start) + inserted + value.slice(end);
 
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-      )?.set || Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-      )?.set;
-
-      if (nativeInputValueSetter) {
-        nativeInputValueSetter.call(target, newValue);
-      } else {
-        target.value = newValue;
-      }
+      setElementNativeValue(target, newValue);
 
       const newCursorPos = start + inserted.length;
       if (typeof target.setSelectionRange === 'function') {
-        target.setSelectionRange(newCursorPos, newCursorPos);
+        try { target.setSelectionRange(newCursorPos, newCursorPos); } catch (e) {}
       }
 
       target.dispatchEvent(new Event('input', { bubbles: true }));
@@ -495,17 +516,7 @@
       // Remove last word and trailing whitespace
       const newValue = value.replace(/\s*\S+\s*$/, '');
 
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-      )?.set || Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-      )?.set;
-
-      if (nativeInputValueSetter) {
-        nativeInputValueSetter.call(target, newValue);
-      } else {
-        target.value = newValue;
-      }
+      setElementNativeValue(target, newValue);
 
       target.dispatchEvent(new Event('input', { bubbles: true }));
       target.dispatchEvent(new Event('change', { bubbles: true }));
@@ -538,17 +549,7 @@
     const tagName = target.tagName ? target.tagName.toLowerCase() : '';
 
     if (tagName === 'input' || tagName === 'textarea') {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-      )?.set || Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-      )?.set;
-
-      if (nativeInputValueSetter) {
-        nativeInputValueSetter.call(target, '');
-      } else {
-        target.value = '';
-      }
+      setElementNativeValue(target, '');
 
       target.dispatchEvent(new Event('input', { bubbles: true }));
       target.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1228,9 +1229,12 @@
     return { success: true, message: 'Glided to search input and focused' };
   }
 
-  function finishQuery() {
+  function finishQuery(queryParam) {
     const input = eyesFreeSearchInput || lastFocusedElement || findPrimarySearchInput();
-    const query = input ? (input.value || '').trim() : '';
+    if (input && queryParam) {
+      setElementNativeValue(input, queryParam);
+    }
+    const query = (queryParam || (input ? input.value : '') || '').trim();
 
     playEarconDictationEnd();
     if (query) {
@@ -1242,9 +1246,9 @@
     }
   }
 
-  function executeSearchQuery() {
+  function executeSearchQuery(queryParam) {
     const input = eyesFreeSearchInput || lastFocusedElement || findPrimarySearchInput();
-    const query = input ? (input.value || '').trim() : '';
+    const query = (queryParam || (input ? input.value : '') || '').trim();
 
     playEarconClick();
     if (query) {
@@ -1253,6 +1257,11 @@
       speakScreenText('Executing search...');
     }
 
+    if (input && query) {
+      setElementNativeValue(input, query);
+    }
+
+    let submitted = false;
     if (input) {
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, code: 'Enter', bubbles: true }));
       input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', keyCode: 13, which: 13, code: 'Enter', bubbles: true }));
@@ -1263,11 +1272,23 @@
         const submitBtn = form.querySelector('button[type="submit"], input[type="submit"], [aria-label*="Search" i]');
         if (submitBtn) {
           submitBtn.click();
+          submitted = true;
         } else {
-          form.submit();
+          try {
+            form.submit();
+            submitted = true;
+          } catch (e) {}
         }
       }
     }
+
+    // Direct Google search fallback if not submitted via form or no input
+    if (query && (!submitted || !input)) {
+      setTimeout(() => {
+        window.location.href = 'https://www.google.com/search?q=' + encodeURIComponent(query);
+      }, 350);
+    }
+
     return { success: true, query };
   }
 
@@ -1376,88 +1397,16 @@
 
   let inTabVoiceActive = false;
   let inTabVoiceMuted = false;
-  let inTabRecognizer = null;
-  let inTabRestartTimer = null;
 
   function startInTabVoiceListening() {
     if (!isBlindModeActive) return;
     inTabVoiceActive = true;
     inTabVoiceMuted = false;
-
-    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRec) {
-      console.warn('[Handsfree Voice] SpeechRecognition API not available in this context.');
-      updateBlindIndicator('⚠️ Voice API unavailable', false);
-      return;
-    }
-
-    if (inTabRecognizer) {
-      try { inTabRecognizer.abort(); } catch (e) {}
-    }
-
-    try {
-      inTabRecognizer = new SpeechRec();
-      inTabRecognizer.continuous = true;
-      inTabRecognizer.interimResults = false;
-      inTabRecognizer.lang = 'en-US';
-      inTabRecognizer.maxAlternatives = 1;
-
-      inTabRecognizer.onstart = function() {
-        console.log('[Handsfree Voice] In-tab microphone active on page');
-        updateBlindIndicator('🎤 Listening: Say "Go to search"', true);
-      };
-
-      inTabRecognizer.onresult = function(event) {
-        if (inTabVoiceMuted || isScreenSpeaking) return;
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            const transcript = (event.results[i][0].transcript || '').trim();
-            if (transcript) {
-              console.log('[Handsfree Voice] Speech detected on page:', transcript);
-              handleInTabVoiceCommand(transcript);
-            }
-          }
-        }
-      };
-
-      inTabRecognizer.onerror = function(event) {
-        console.warn('[Handsfree Voice] Recognition error on page:', event.error);
-        if (event.error === 'not-allowed') {
-          updateBlindIndicator('⚠️ Click mic in address bar to allow', false);
-          speakScreenText('Please allow microphone access in your browser address bar for voice navigation.');
-        }
-      };
-
-      inTabRecognizer.onend = function() {
-        if (inTabVoiceActive && isBlindModeActive) {
-          clearTimeout(inTabRestartTimer);
-          inTabRestartTimer = setTimeout(function() {
-            if (inTabVoiceActive && isBlindModeActive && !isScreenSpeaking) {
-              try {
-                inTabRecognizer.start();
-              } catch (e) {
-                startInTabVoiceListening();
-              }
-            }
-          }, 300);
-        } else {
-          updateBlindIndicator('Stopped', false);
-        }
-      };
-
-      inTabRecognizer.start();
-      updateBlindIndicator('🎤 Listening for "Go to search"...', true);
-    } catch (err) {
-      console.warn('[Handsfree Voice] Failed to start recognizer:', err);
-    }
+    updateBlindIndicator('🦻 Eyes-Free Active: Speak your query or command', true);
   }
 
   function stopInTabVoiceListening() {
     inTabVoiceActive = false;
-    clearTimeout(inTabRestartTimer);
-    if (inTabRecognizer) {
-      try { inTabRecognizer.abort(); } catch (e) {}
-    }
     if (blindIndicatorEl) {
       blindIndicatorEl.style.display = 'none';
     }
@@ -1751,11 +1700,11 @@
         break;
 
       case 'FINISH_QUERY':
-        sendResponse(finishQuery());
+        sendResponse(finishQuery(request.query));
         break;
 
       case 'EXECUTE_SEARCH':
-        sendResponse(executeSearchQuery());
+        sendResponse(executeSearchQuery(request.query));
         break;
 
       case 'READ_SEARCH_RESULTS':

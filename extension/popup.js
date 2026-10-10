@@ -409,9 +409,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (recordedAudioBlob.size === 0) {
           setUIState(State.ERROR, 'Recorded audio was empty. Please try again.');
-          if (isReadingActive) {
+          if (isReadingActive || activeMode === Mode.BLIND) {
             setTimeout(() => {
-              if (isReadingActive && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
+              if ((isReadingActive || activeMode === Mode.BLIND) && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
                 startRecording();
               }
             }, 600);
@@ -502,6 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // State Management
   let activeMode = Mode.COMMAND; // Default mode is COMMAND
   let isProcessingTranscript = false;
+  let lastDictatedSearchQuery = '';
 
   const modeCommandBtn = document.getElementById('modeCommand');
   const modeDictationBtn = document.getElementById('modeDictation');
@@ -678,11 +679,11 @@ document.addEventListener('DOMContentLoaded', () => {
         setUIState(State.COMPLETED, 'No speech detected.');
         isProcessingTranscript = false;
 
-        // Auto re-listen if conversational reading is active
-        if (isReadingActive) {
-          console.log('[Handsfree Conversational] No speech detected. Re-listening...');
+        // Auto re-listen if conversational reading or blind mode is active
+        if (isReadingActive || activeMode === Mode.BLIND) {
+          console.log('[Handsfree] No speech detected. Re-listening...');
           setTimeout(() => {
-            if (isReadingActive && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
+            if ((isReadingActive || activeMode === Mode.BLIND) && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
               startRecording();
             }
           }, 500);
@@ -713,35 +714,35 @@ document.addEventListener('DOMContentLoaded', () => {
           setUIState(State.COMPLETED, `Blind Command: "${transcript}"`);
           executeVoiceCommand(transcript);
         } else {
-          // Speech dictation into active input (e.g. search query)
-          let trailingAction = null;
-          let dictationPayload = transcript;
+          // Check for trailing action ("search" or "done") with punctuation support
+          const trimmed = transcript.trim();
+          const trailingSearchRegex = /[\s,]+(?:search|google search|execute search|submit search)[\.\!\?,]*$/i;
+          const trailingDoneRegex = /[\s,]+(?:done|finished|done typing|query done)[\.\!\?,]*$/i;
 
-          if (/\b(?:done|finished)$/i.test(dictationPayload)) {
-            trailingAction = 'done';
-            dictationPayload = dictationPayload.replace(/\b(?:done|finished)$/i, '').trim();
-          } else if (/\b(?:search)$/i.test(dictationPayload)) {
+          let trailingAction = null;
+          let dictationPayload = trimmed;
+
+          if (trailingSearchRegex.test(trimmed)) {
             trailingAction = 'search';
-            dictationPayload = dictationPayload.replace(/\b(?:search)$/i, '').trim();
+            dictationPayload = trimmed.replace(trailingSearchRegex, '').replace(/[\s,]+$/, '').trim();
+          } else if (trailingDoneRegex.test(trimmed)) {
+            trailingAction = 'done';
+            dictationPayload = trimmed.replace(trailingDoneRegex, '').replace(/[\s,]+$/, '').trim();
           }
 
           if (dictationPayload.length > 0) {
-            const insertRes = await sendToActiveTab({ action: 'INSERT_DICTATION', text: dictationPayload });
-            if (insertRes && insertRes.success) {
-              setUIState(State.COMPLETED, `Entered: "${dictationPayload}". (Say "Done" or "Search")`);
-            } else {
-              setUIState(State.COMPLETED, `Dictated: "${dictationPayload}".`);
-            }
+            lastDictatedSearchQuery = dictationPayload;
+            await sendToActiveTab({ action: 'INSERT_DICTATION', text: dictationPayload });
           }
 
           if (trailingAction === 'done') {
-            setTimeout(() => {
-              executeVoiceCommand('done');
-            }, 300);
+            setUIState(State.COMPLETED, `Query ready: "${dictationPayload || lastDictatedSearchQuery}". Say "Search" to execute.`);
+            await sendToActiveTab({ action: 'FINISH_QUERY', query: dictationPayload || lastDictatedSearchQuery });
           } else if (trailingAction === 'search') {
-            setTimeout(() => {
-              executeVoiceCommand('search');
-            }, 400);
+            setUIState(State.COMPLETED, `Searching for "${dictationPayload || lastDictatedSearchQuery}"...`);
+            await sendToActiveTab({ action: 'EXECUTE_SEARCH', query: dictationPayload || lastDictatedSearchQuery });
+          } else {
+            setUIState(State.COMPLETED, `Entered: "${dictationPayload}". (Say "Done" or "Search")`);
           }
         }
       } else if (activeMode === Mode.DICTATION || activeMode === Mode.READING) {
@@ -836,6 +837,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
+      // Continuous loop for Eyes-Free Blind Mode
+      if (activeMode === Mode.BLIND) {
+        const isStopCmd = ['stop', 'cancel', 'stop listening', 'disable blind mode', 'exit blind mode', 'turn off blind mode'].includes(lower);
+        if (!isStopCmd) {
+          setTimeout(() => {
+            if (activeMode === Mode.BLIND && currentState !== State.RECORDING && currentState !== State.REQUESTING && !isTtsSpeaking) {
+              startRecording();
+            }
+          }, 850);
+        }
+      }
+
       console.log('[Handsfree] Transcription result:', data);
 
     } catch (err) {
@@ -880,6 +893,13 @@ document.addEventListener('DOMContentLoaded', () => {
         url.includes('chromewebstore.google.com');
 
       if (isRestrictedUrl) {
+        if (message.action === 'EXECUTE_SEARCH' && message.query) {
+          await chrome.tabs.update(activeTab.id, { url: `https://www.google.com/search?q=${encodeURIComponent(message.query)}` });
+          return { success: true, message: 'Navigating to Google Search...' };
+        } else if (message.action === 'GO_TO_SEARCH') {
+          await chrome.tabs.update(activeTab.id, { url: 'https://www.google.com' });
+          return { success: true, message: 'Opening Google Search...' };
+        }
         return { success: false, error: 'Chrome blocks extensions on chrome:// system pages. Please open Google or any website to use Handsfree.' };
       }
 
@@ -899,12 +919,19 @@ document.addEventListener('DOMContentLoaded', () => {
             files: ['content.js']
           });
           
-          await new Promise(r => setTimeout(r, 100));
+          await new Promise(r => setTimeout(r, 120));
 
           const retryResponse = await chrome.tabs.sendMessage(activeTab.id, message);
           return retryResponse || { success: true };
         } catch (injectErr) {
           console.warn('[Handsfree] Content script injection failed:', injectErr);
+          if (message.action === 'EXECUTE_SEARCH' && message.query) {
+            await chrome.tabs.update(activeTab.id, { url: `https://www.google.com/search?q=${encodeURIComponent(message.query)}` });
+            return { success: true, message: 'Navigating to Google Search...' };
+          } else if (message.action === 'GO_TO_SEARCH') {
+            await chrome.tabs.update(activeTab.id, { url: 'https://www.google.com' });
+            return { success: true, message: 'Opening Google Search...' };
+          }
           return { success: false, error: 'Cannot access page content on this tab.' };
         }
       }
@@ -1429,9 +1456,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Dictate Search Term -> Say "Done"
     if (text === 'done' || text === 'finished' || text === 'query done' || text === 'done typing' || text === 'search done') {
       messageText.textContent = 'Command: Query finished';
-      sendToActiveTab({ action: 'FINISH_QUERY' }).then(res => {
+      sendToActiveTab({ action: 'FINISH_QUERY', query: lastDictatedSearchQuery }).then(res => {
         if (res && res.success) {
-          setUIState(State.COMPLETED, `Query ready: "${res.query || ''}". Say "Search" to execute.`);
+          setUIState(State.COMPLETED, `Query ready: "${res.query || lastDictatedSearchQuery || ''}". Say "Search" to execute.`);
         } else {
           setUIState(State.COMPLETED, 'Query finished. Say "Search" to execute.');
         }
@@ -1442,7 +1469,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Search Execution -> Say "Search"
     if (text === 'search' || text === 'execute search' || text === 'submit search' || text === 'run search' || text === 'google search') {
       messageText.textContent = 'Command: Execute search';
-      sendToActiveTab({ action: 'EXECUTE_SEARCH' }).then(res => {
+      sendToActiveTab({ action: 'EXECUTE_SEARCH', query: lastDictatedSearchQuery }).then(res => {
         if (res && res.success) {
           setUIState(State.COMPLETED, 'Search submitted.');
         } else {

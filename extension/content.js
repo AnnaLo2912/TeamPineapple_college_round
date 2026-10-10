@@ -904,132 +904,161 @@
   // --- Earcon Audio Synthesizer (Web Audio API) ---
 
   function playEarconActivate() {
-    const ctx = getBlindAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    [523.25, 659.25, 783.99].forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + idx * 0.08);
-      gain.gain.setValueAtTime(0, now + idx * 0.08);
-      gain.gain.linearRampToValueAtTime(0.18, now + idx * 0.08 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.22);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + idx * 0.08);
-      osc.stop(now + idx * 0.08 + 0.25);
-    });
+    try {
+      const ctx = getBlindAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      [523.25, 659.25, 783.99].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+        gain.gain.setValueAtTime(0.0001, now + idx * 0.08);
+        gain.gain.linearRampToValueAtTime(0.18, now + idx * 0.08 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.08);
+        osc.stop(now + idx * 0.08 + 0.25);
+      });
+    } catch (e) {
+      console.warn('[Handsfree Earcon] Activate error:', e);
+    }
   }
 
   function playEarconFocus() {
-    const ctx = getBlindAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(440, now);
-    osc.frequency.exponentialRampToValueAtTime(880, now + 0.09);
-    gain.gain.setValueAtTime(0.15, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.15);
+    try {
+      const ctx = getBlindAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.09);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } catch (e) {
+      console.warn('[Handsfree Earcon] Focus error:', e);
+    }
   }
 
   function playEarconDictationStart() {
-    const ctx = getBlindAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    [523.25, 659.25].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + i * 0.07);
-      gain.gain.setValueAtTime(0.12, now + i * 0.07);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.16);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + i * 0.07);
-      osc.stop(now + i * 0.07 + 0.18);
-    });
+    try {
+      const ctx = getBlindAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      [523.25, 659.25].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + i * 0.07);
+        gain.gain.setValueAtTime(0.12, now + i * 0.07);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.07 + 0.16);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.07);
+        osc.stop(now + i * 0.07 + 0.18);
+      });
+    } catch (e) {
+      console.warn('[Handsfree Earcon] Dictation start error:', e);
+    }
   }
 
   function playEarconDictationEnd() {
-    const ctx = getBlindAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    [659.25, 523.25].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + i * 0.07);
-      gain.gain.setValueAtTime(0.12, now + i * 0.07);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.16);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + i * 0.07);
-      osc.stop(now + i * 0.07 + 0.18);
-    });
+    try {
+      const ctx = getBlindAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      [659.25, 523.25].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + i * 0.07);
+        gain.gain.setValueAtTime(0.12, now + i * 0.07);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.07 + 0.16);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.07);
+        osc.stop(now + i * 0.07 + 0.18);
+      });
+    } catch (e) {
+      console.warn('[Handsfree Earcon] Dictation end error:', e);
+    }
   }
 
   function playEarconClick() {
-    const ctx = getBlindAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1200, now);
-    osc.frequency.exponentialRampToValueAtTime(300, now + 0.04);
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.05);
+    try {
+      const ctx = getBlindAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, now);
+      osc.frequency.exponentialRampToValueAtTime(300, now + 0.04);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.05);
+    } catch (e) {
+      console.warn('[Handsfree Earcon] Click error:', e);
+    }
   }
 
   function playEarconError() {
-    const ctx = getBlindAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    [220, 180].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(freq, now + i * 0.1);
-      gain.gain.setValueAtTime(0.12, now + i * 0.1);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.12);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + i * 0.1);
-      osc.stop(now + i * 0.1 + 0.14);
-    });
+    try {
+      const ctx = getBlindAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      [220, 180].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, now + i * 0.1);
+        gain.gain.setValueAtTime(0.12, now + i * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.1 + 0.12);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.1);
+        osc.stop(now + i * 0.1 + 0.14);
+      });
+    } catch (e) {
+      console.warn('[Handsfree Earcon] Error earcon error:', e);
+    }
   }
 
   function playEarconResultPing() {
-    const ctx = getBlindAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(783.99, now); // G5
-    gain.gain.setValueAtTime(0.12, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.15);
+    try {
+      const ctx = getBlindAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(783.99, now); // G5
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } catch (e) {
+      console.warn('[Handsfree Earcon] Ping error:', e);
+    }
   }
 
   // --- Screen Dictator Speech Synthesizer ---
 
   let screenDictatorDebounceTimer = null;
   let lastSpokenScreenText = '';
+  let isScreenSpeaking = false;
 
   function speakScreenText(text, interrupt = true) {
     return new Promise((resolve) => {
@@ -1037,6 +1066,9 @@
         resolve();
         return;
       }
+      isScreenSpeaking = true;
+      pauseInTabVoiceListening();
+
       if (interrupt) {
         window.speechSynthesis.cancel();
       }
@@ -1044,8 +1076,16 @@
       utterance.rate = 1.05;
       utterance.pitch = 1.0;
       utterance.lang = 'en-US';
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
+
+      const finish = () => {
+        isScreenSpeaking = false;
+        setTimeout(() => {
+          resumeInTabVoiceListening();
+        }, 300);
+        resolve();
+      };
+      utterance.onend = finish;
+      utterance.onerror = finish;
       window.speechSynthesis.speak(utterance);
     });
   }
@@ -1132,17 +1172,19 @@
     const selectors = [
       'textarea[name="q"]',
       'input[name="q"]',
+      'textarea[aria-label*="Search" i]',
+      'input[aria-label*="Search" i]',
       '[role="searchbox"]',
       'input[type="search"]',
       'input[title*="Search" i]',
-      'input[aria-label*="Search" i]',
-      'textarea[aria-label*="Search" i]',
       'input[placeholder*="Search" i]',
-      'input#search'
+      'input#search',
+      'form[role="search"] textarea',
+      'form[role="search"] input'
     ];
     for (const sel of selectors) {
       const el = document.querySelector(sel);
-      if (el && el.offsetParent !== null && !el.disabled) {
+      if (el && !el.disabled && (el.offsetParent !== null || el.getClientRects().length > 0)) {
         return el;
       }
     }
@@ -1160,6 +1202,8 @@
     eyesFreeSearchInput = input;
     lastFocusedElement = input;
 
+    ensureBlindIndicatorStyles();
+
     // Smooth animated glide into center
     input.scrollIntoView({ behavior: 'smooth', block: 'center' });
     input.focus();
@@ -1169,8 +1213,8 @@
     const origBoxShadow = input.style.boxShadow;
     const origTransition = input.style.transition;
     input.style.transition = 'all 0.3s ease';
-    input.style.outline = '4px solid #6366f1';
-    input.style.boxShadow = '0 0 24px rgba(99, 102, 241, 0.7)';
+    input.style.outline = '4px solid #f59e0b';
+    input.style.boxShadow = '0 0 24px rgba(245, 158, 11, 0.8)';
 
     setTimeout(() => {
       input.style.outline = origOutline;
@@ -1179,6 +1223,7 @@
     }, 3500);
 
     playEarconFocus();
+    updateBlindIndicator('🔍 Focused Search Bar', false);
     speakScreenText('Search bar ready. Speak your query, then say Done.');
     return { success: true, message: 'Glided to search input and focused' };
   }
@@ -1309,6 +1354,244 @@
     return { success: true, number: targetNum, title: item.title, url: item.url };
   }
 
+  // --- In-Tab Continuous Speech Recognition & Eyes-Free Engine ---
+  let blindIndicatorEl = null;
+
+  function ensureBlindIndicatorStyles() {}
+
+  function updateBlindIndicator(text, isRecording = true) {
+    if (!document.body) return;
+    if (!blindIndicatorEl) {
+      blindIndicatorEl = document.createElement('div');
+      blindIndicatorEl.id = 'handsfree-blind-status-badge';
+      blindIndicatorEl.setAttribute('role', 'status');
+      blindIndicatorEl.setAttribute('aria-live', 'polite');
+      blindIndicatorEl.style.cssText = 'position:fixed!important;bottom:24px!important;right:24px!important;background:#0f172a!important;border:2px solid #f59e0b!important;border-radius:9999px!important;padding:8px 16px!important;color:#f8fafc!important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif!important;font-size:13px!important;font-weight:600!important;display:flex!important;align-items:center!important;gap:10px!important;box-shadow:0 10px 25px -5px rgba(0,0,0,0.5),0 0 15px rgba(245,158,11,0.4)!important;z-index:2147483647!important;pointer-events:none!important;transition:all 0.25s ease!important;';
+      document.body.appendChild(blindIndicatorEl);
+    }
+    blindIndicatorEl.style.display = isBlindModeActive ? 'flex' : 'none';
+    const dotColor = isRecording ? '#ef4444' : '#10b981';
+    blindIndicatorEl.innerHTML = `<span style="width:10px!important;height:10px!important;border-radius:50%!important;background:${dotColor}!important;display:inline-block!important;"></span><span>${text}</span>`;
+  }
+
+  let inTabVoiceActive = false;
+  let inTabVoiceMuted = false;
+  let inTabRecognizer = null;
+  let inTabRestartTimer = null;
+
+  function startInTabVoiceListening() {
+    if (!isBlindModeActive) return;
+    inTabVoiceActive = true;
+    inTabVoiceMuted = false;
+
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      console.warn('[Handsfree Voice] SpeechRecognition API not available in this context.');
+      updateBlindIndicator('⚠️ Voice API unavailable', false);
+      return;
+    }
+
+    if (inTabRecognizer) {
+      try { inTabRecognizer.abort(); } catch (e) {}
+    }
+
+    try {
+      inTabRecognizer = new SpeechRec();
+      inTabRecognizer.continuous = true;
+      inTabRecognizer.interimResults = false;
+      inTabRecognizer.lang = 'en-US';
+      inTabRecognizer.maxAlternatives = 1;
+
+      inTabRecognizer.onstart = function() {
+        console.log('[Handsfree Voice] In-tab microphone active on page');
+        updateBlindIndicator('🎤 Listening: Say "Go to search"', true);
+      };
+
+      inTabRecognizer.onresult = function(event) {
+        if (inTabVoiceMuted || isScreenSpeaking) return;
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            const transcript = (event.results[i][0].transcript || '').trim();
+            if (transcript) {
+              console.log('[Handsfree Voice] Speech detected on page:', transcript);
+              handleInTabVoiceCommand(transcript);
+            }
+          }
+        }
+      };
+
+      inTabRecognizer.onerror = function(event) {
+        console.warn('[Handsfree Voice] Recognition error on page:', event.error);
+        if (event.error === 'not-allowed') {
+          updateBlindIndicator('⚠️ Click mic in address bar to allow', false);
+          speakScreenText('Please allow microphone access in your browser address bar for voice navigation.');
+        }
+      };
+
+      inTabRecognizer.onend = function() {
+        if (inTabVoiceActive && isBlindModeActive) {
+          clearTimeout(inTabRestartTimer);
+          inTabRestartTimer = setTimeout(function() {
+            if (inTabVoiceActive && isBlindModeActive && !isScreenSpeaking) {
+              try {
+                inTabRecognizer.start();
+              } catch (e) {
+                startInTabVoiceListening();
+              }
+            }
+          }, 300);
+        } else {
+          updateBlindIndicator('Stopped', false);
+        }
+      };
+
+      inTabRecognizer.start();
+      updateBlindIndicator('🎤 Listening for "Go to search"...', true);
+    } catch (err) {
+      console.warn('[Handsfree Voice] Failed to start recognizer:', err);
+    }
+  }
+
+  function stopInTabVoiceListening() {
+    inTabVoiceActive = false;
+    clearTimeout(inTabRestartTimer);
+    if (inTabRecognizer) {
+      try { inTabRecognizer.abort(); } catch (e) {}
+    }
+    if (blindIndicatorEl) {
+      blindIndicatorEl.style.display = 'none';
+    }
+  }
+
+  function pauseInTabVoiceListening() {
+    inTabVoiceMuted = true;
+  }
+
+  function resumeInTabVoiceListening() {
+    inTabVoiceMuted = false;
+  }
+
+  function handleInTabVoiceCommand(transcript) {
+    if (!transcript || isScreenSpeaking) return;
+    const clean = transcript.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+    console.log('[Handsfree InTab Command] Heard:', clean);
+
+    updateBlindIndicator(`🗣️ "${clean}"`, false);
+    setTimeout(() => {
+      if (isBlindModeActive && inTabVoiceActive) {
+        updateBlindIndicator('🎤 Listening: Say "Go to search"', true);
+      }
+    }, 3000);
+
+    // Normalize word numbers 1-10
+    const wordNums = { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10' };
+    let norm = clean;
+    for (const [w, d] of Object.entries(wordNums)) {
+      norm = norm.replace(new RegExp(`\\b${w}\\b`, 'g'), d);
+    }
+
+    // 1. Direct Search Bar Auto-Focus & Glide
+    if (
+      norm === 'cursor go to search' ||
+      norm === 'go to search' ||
+      norm === 'search bar' ||
+      norm === 'focus search' ||
+      norm === 'find search' ||
+      norm === 'search input'
+    ) {
+      glideToSearchInput();
+      return;
+    }
+
+    // 2. Query Done
+    if (norm === 'done' || norm === 'finished' || norm === 'query done' || norm === 'done typing' || norm === 'search done') {
+      finishQuery();
+      return;
+    }
+
+    // 3. Execute Search
+    if (norm === 'search' || norm === 'execute search' || norm === 'submit search' || norm === 'run search' || norm === 'google search') {
+      executeSearchQuery();
+      return;
+    }
+
+    // 4. Read Links / Results
+    if (norm === 'read links' || norm === 'read results' || norm === 'read top links' || norm === 'read search results' || norm === 'read result links') {
+      readSearchResults();
+      return;
+    }
+
+    // 5. Click Link N / Result N
+    const clickMatch = norm.match(/^(?:click|open)\s+(?:link\s+|result\s+)?(\d{1,2})$/) || norm.match(/^(?:link|result)\s+(\d{1,2})$/);
+    if (clickMatch && clickMatch[1]) {
+      const num = parseInt(clickMatch[1], 10);
+      const res = clickSearchResult(num);
+      if (!res.success) {
+        clickNumberedLink(num);
+      }
+      return;
+    }
+
+    // 6. Scroll
+    if (norm === 'scroll down' || norm === 'page down') {
+      window.scrollBy({ top: window.innerHeight * 0.75, behavior: 'smooth' });
+      playEarconClick();
+      return;
+    }
+    if (norm === 'scroll up' || norm === 'page up') {
+      window.scrollBy({ top: -window.innerHeight * 0.75, behavior: 'smooth' });
+      playEarconClick();
+      return;
+    }
+
+    // 7. Clear Text
+    if (norm === 'clear' || norm === 'clear text' || norm === 'clear input' || norm === 'clear search') {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement)) {
+        activeEl.value = '';
+        activeEl.dispatchEvent(new Event('input', { bubbles: true }));
+        activeEl.dispatchEvent(new Event('change', { bubbles: true }));
+        playEarconClick();
+        speakScreenText('Cleared text.');
+      }
+      return;
+    }
+
+    // 8. Stop / Cancel
+    if (norm === 'stop' || norm === 'stop reading' || norm === 'cancel') {
+      window.speechSynthesis.cancel();
+      playEarconClick();
+      return;
+    }
+
+    // 9. Dictate into Active Input
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement)) {
+      let payload = transcript;
+      let trailing = null;
+
+      if (/\b(?:done|finished)$/i.test(payload)) {
+        trailing = 'done';
+        payload = payload.replace(/\b(?:done|finished)$/i, '').trim();
+      } else if (/\b(?:search)$/i.test(payload)) {
+        trailing = 'search';
+        payload = payload.replace(/\b(?:search)$/i, '').trim();
+      }
+
+      if (payload) {
+        insertDictatedText(payload);
+        playEarconDictationStart();
+      }
+
+      if (trailing === 'done') {
+        setTimeout(() => finishQuery(), 300);
+      } else if (trailing === 'search') {
+        setTimeout(() => executeSearchQuery(), 400);
+      }
+      return;
+    }
+  }
+
   // --- Eyes-Free Blind Mode Activation & Persistence ---
 
   function setBlindMode(enabled) {
@@ -1318,6 +1601,7 @@
     if (isBlindModeActive) {
       playEarconActivate();
       speakScreenText('Eyes-Free Blind Navigation enabled.');
+      startInTabVoiceListening();
 
       const isGoogle = /google\.[a-z.]+/i.test(window.location.hostname);
       const isSearch = window.location.pathname.includes('/search');
@@ -1330,6 +1614,7 @@
         }, 800);
       }
     } else {
+      stopInTabVoiceListening();
       speakScreenText('Eyes-Free Blind Navigation disabled.');
     }
     return { success: true, isBlindMode: isBlindModeActive };
@@ -1345,6 +1630,7 @@
 
       setTimeout(() => {
         playEarconActivate();
+        startInTabVoiceListening();
         if (isGoogle && !isSearch) {
           glideToSearchInput();
         } else if (isGoogle && isSearch) {

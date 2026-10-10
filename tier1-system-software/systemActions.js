@@ -1,6 +1,7 @@
 import { exec } from 'child_process'
 import { speak, playEarcon } from './ttsEngine.js'
 import { openDesktopItem } from './screenDictator.js'
+import { findAndOpenFile } from './fileNavigator.js'
 
 /**
  * System Actions Engine
@@ -166,6 +167,12 @@ export async function executeCommand(rawCommand) {
   if (cleanTarget) {
     const opened = openDesktopItem(cleanTarget)
     if (opened) return true
+  }
+
+  // 6. File Navigator: Search & Open Files/Folders in Downloads, Documents, Desktop, Project
+  const fileOpened = await findAndOpenFile(cmd)
+  if (fileOpened) {
+    return true
   }
 
   return false

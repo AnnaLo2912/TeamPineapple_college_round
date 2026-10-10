@@ -4,6 +4,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { executeCommand } from './systemActions.js'
 import { announceActiveWindow, announceOpenWindows, dictateStartupScreen } from './screenDictator.js'
+import { dictateFolder } from './fileNavigator.js'
 import { speak, playEarcon } from './ttsEngine.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -64,7 +65,28 @@ export async function processVoiceInput(input) {
     return
   }
 
-  // Check System Actions (Open Google, Open File Explorer, etc.)
+  // Check Folder & File Dictation ("what is in downloads", "read documents", "what files are on desktop")
+  if (lower.includes('download') && (lower.includes('what') || lower.includes('list') || lower.includes('read') || lower.includes('files'))) {
+    await dictateFolder('downloads')
+    return
+  }
+
+  if (lower.includes('document') && (lower.includes('what') || lower.includes('list') || lower.includes('read') || lower.includes('files'))) {
+    await dictateFolder('documents')
+    return
+  }
+
+  if (lower.includes('desktop') && (lower.includes('what files') || lower.includes('list files') || lower.includes('read files'))) {
+    await dictateFolder('desktop')
+    return
+  }
+
+  if (lower.includes('project') && (lower.includes('what') || lower.includes('list') || lower.includes('read') || lower.includes('files'))) {
+    await dictateFolder('project')
+    return
+  }
+
+  // Check System Actions (Open Google, Open File Explorer, Open <Filename>, etc.)
   const actionExecuted = await executeCommand(text)
   if (actionExecuted) {
     return

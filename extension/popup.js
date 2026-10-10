@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const modeBlindBtn = document.getElementById('modeBlind');
   const blindModeToggle = document.getElementById('blindModeToggle');
   const blindModeCard = document.getElementById('blindModeCard');
+  const openGoogleBtn = document.getElementById('openGoogleBtn');
 
   // Backend Express Base URL (supports 5001 as default to prevent macOS AirPlay port 5000 conflicts, with auto-fallback)
   let backendBaseUrl = 'http://localhost:5001';
@@ -124,11 +125,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
       case State.ERROR:
         statusBadge.classList.add('status-error');
-        statusText.textContent = 'Error';
+        statusText.textContent = 'Notice';
         messageBox.classList.add('message-error');
         messageText.textContent = customMessage || 'An error occurred. Please try again.';
-        if (grantMicBtn && (customMessage.includes('tab') || customMessage.includes('permission') || customMessage.includes('denied'))) {
-          grantMicBtn.classList.remove('hidden');
+        const lowerMsg = (customMessage || '').toLowerCase();
+        if (grantMicBtn) {
+          if (lowerMsg.includes('mic permission') || lowerMsg.includes('permission denied') || lowerMsg.includes('notallowederror')) {
+            grantMicBtn.classList.remove('hidden');
+          } else {
+            grantMicBtn.classList.add('hidden');
+          }
+        }
+        if (openGoogleBtn) {
+          if (lowerMsg.includes('system') || lowerMsg.includes('chrome://') || lowerMsg.includes('restricted') || lowerMsg.includes('webstore')) {
+            openGoogleBtn.classList.remove('hidden');
+          } else {
+            openGoogleBtn.classList.add('hidden');
+          }
         }
         startBtn.disabled = false;
         stopBtn.disabled = true;
@@ -848,6 +861,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const url = activeTab.url || '';
+
+      // Auto-navigate to Google on New Tab pages when searching or enabling blind mode
+      if (url.startsWith('chrome://newtab') || url.startsWith('chrome-search://') || url === 'about:blank') {
+        if (message.action === 'GO_TO_SEARCH' || message.action === 'EXECUTE_SEARCH' || message.action === 'SET_BLIND_MODE') {
+          await chrome.tabs.update(activeTab.id, { url: 'https://www.google.com' });
+          return { success: true, message: 'Opening Google Search...' };
+        }
+      }
+
       const isRestrictedUrl = 
         url.startsWith('chrome://') || 
         url.startsWith('chrome-extension://') || 
@@ -858,7 +880,7 @@ document.addEventListener('DOMContentLoaded', () => {
         url.includes('chromewebstore.google.com');
 
       if (isRestrictedUrl) {
-        return { success: false, error: 'Handsfree is not supported on Chrome system or Webstore pages.' };
+        return { success: false, error: 'Chrome blocks extensions on chrome:// system pages. Please open Google or any website to use Handsfree.' };
       }
 
       // 1. Try direct messaging
@@ -1390,7 +1412,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res && res.success) {
           setUIState(State.COMPLETED, res.message || 'Search input focused. Dictate query and say "Done".');
         } else {
-          setUIState(State.ERROR, res?.error || 'Could not find search bar on page.');
+          // If on a restricted page, automatically navigate to Google Search!
+          if (res?.error && (res.error.includes('system') || res.error.includes('Chrome'))) {
+            chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+              if (tab?.id) chrome.tabs.update(tab.id, { url: 'https://www.google.com' });
+            });
+            setUIState(State.COMPLETED, 'Opening Google Search...');
+          } else {
+            setUIState(State.ERROR, res?.error || 'Could not find search bar on page.');
+          }
         }
       });
       return;
@@ -1601,6 +1631,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (grantMicBtn) {
     grantMicBtn.addEventListener('click', openPermissionTab);
+  }
+
+  if (openGoogleBtn) {
+    openGoogleBtn.addEventListener('click', async () => {
+      if (chrome.tabs) {
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (activeTab && activeTab.id) {
+          await chrome.tabs.update(activeTab.id, { url: 'https://www.google.com' });
+        } else {
+          await chrome.tabs.create({ url: 'https://www.google.com' });
+        }
+      }
+    });
   }
 
   if (toggleNumbersBtn) {

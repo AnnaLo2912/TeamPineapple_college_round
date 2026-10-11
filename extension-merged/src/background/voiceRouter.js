@@ -81,6 +81,27 @@ function resolveWebsiteUrl(target) {
   return `https://www.google.com/search?q=${encodeURIComponent(clean)}`
 }
 
+// Gmail compose pop-out (view=cm) — opens a fresh draft window.
+const EMAIL_COMPOSE_URL = 'https://mail.google.com/mail/?view=cm&fs=1&tf=1'
+
+// Spoken phrases that switch operating mode. Keys are normalised (lowercase,
+// punctuation stripped, whitespace collapsed) so they match `executeVoiceCommand`.
+const MODE_COMMANDS = {
+  command: ['command', 'command mode', 'stop dictation'],
+  dictation: ['dictation', 'dictation mode', 'start dictation'],
+  reading: ['reading', 'reading mode', 'read mode'],
+  blind: ['blind mode', 'eyes free', 'eyes free mode', 'enable blind mode', 'start blind mode'],
+  'disable-blind': ['disable blind mode', 'stop blind mode', 'exit blind mode', 'turn off blind mode'],
+}
+
+function matchModeCommand(text) {
+  if (!text) return null
+  for (const [mode, phrases] of Object.entries(MODE_COMMANDS)) {
+    if (phrases.includes(text)) return mode
+  }
+  return null
+}
+
 function isRestrictedUrl(url) {
   const u = url || ''
   return (
@@ -95,7 +116,7 @@ function isRestrictedUrl(url) {
 }
 
 export function createVoiceRouter(deps) {
-  const { speak, stopSpeak, pauseSpeak, resumeSpeak, broadcast, switchTab, openNewTab, closeActiveTab, openUrl } = deps
+  const { speak, stopSpeak, pauseSpeak, resumeSpeak, broadcast, switchTab, openNewTab, closeActiveTab, openUrl, openUrlNewTab, recenter } = deps
 
   let activeMode = Mode.COMMAND
   let isReadingActive = false
@@ -216,8 +237,11 @@ export function createVoiceRouter(deps) {
       'backspace', 'delete word', 'back space',
       'next tab', 'previous tab', 'prev tab', 'last tab', 'switch tab',
       'new tab', 'open new tab', 'close tab', 'close this tab', 'close current tab',
+      'recalibrate', 'recenter', 'recenter cursor', 'recenter the cursor',
+      'draft an email', 'draft email', 'compose email', 'compose an email', 'write an email', 'new email',
     ]
     if (blindCommands.includes(lower)) return true
+    if (matchModeCommand(lower)) return true
     const normalized = normalizeSpokenNumbers(lower)
     if (/^(?:click|open|select|press|go\s*to)\s+(?:link\s+|result\s+|number\s+|#)?\d{1,3}$/i.test(normalized)) return true
     if (/^(?:link|result|number)\s+#?\d{1,3}$/i.test(normalized)) return true
@@ -333,14 +357,35 @@ export function createVoiceRouter(deps) {
       text = text.replace(new RegExp(`\\b${w}\\b`, 'g'), d)
     }
 
-    if (text === 'blind mode' || text === 'eyes free' || text === 'eyes free mode' || text === 'enable blind mode' || text === 'start blind mode') {
+    const modeCommand = matchModeCommand(text)
+    if (modeCommand === 'blind') {
       setMessage('Command: Enable Eyes-Free Blind Mode')
       await updateBlindMode(true)
       return
     }
-    if (text === 'disable blind mode' || text === 'stop blind mode' || text === 'exit blind mode' || text === 'turn off blind mode') {
+    if (modeCommand === 'disable-blind') {
       setMessage('Command: Disable Eyes-Free Blind Mode')
       await updateBlindMode(false)
+      return
+    }
+    if (modeCommand === 'command') {
+      setMessage('Command: Command Mode')
+      if (isReadingActive) await stopReadingPage()
+      setMode(Mode.COMMAND)
+      setMessage('Switched to Command Mode.')
+      return
+    }
+    if (modeCommand === 'dictation') {
+      setMessage('Command: Dictation Mode')
+      if (isReadingActive) await stopReadingPage()
+      setMode(Mode.DICTATION)
+      setMessage('Switched to Dictation Mode.')
+      return
+    }
+    if (modeCommand === 'reading') {
+      setMessage('Command: Reading Mode')
+      setMode(Mode.READING)
+      setMessage('Switched to Reading Mode.')
       return
     }
 
@@ -427,6 +472,23 @@ export function createVoiceRouter(deps) {
       return
     }
 
+    if (text === 'recalibrate' || text === 'recenter' || text === 'recenter cursor' || text === 'recenter the cursor') {
+      setMessage('Command: Recenter')
+      if (recenter) recenter()
+      setMessage('Recentering in 1.8s — look forward.')
+      return
+    }
+
+    if (
+      text === 'draft an email' || text === 'draft email' || text === 'compose email' ||
+      text === 'compose an email' || text === 'write an email' || text === 'new email'
+    ) {
+      setMessage('Command: Draft an email')
+      if (openUrlNewTab) openUrlNewTab(EMAIL_COMPOSE_URL)
+      setMessage('Opening a new email draft...')
+      return
+    }
+
     const siteMatch = text.match(/^(?:open|go to|navigate to|visit)\s+(.+)$/)
     if (siteMatch && siteMatch[1]) {
       const target = siteMatch[1].trim()
@@ -504,12 +566,6 @@ export function createVoiceRouter(deps) {
     } else if (text === 'submit' || text === 'submit form' || text === 'send form') {
       setMessage('Command: Submit form')
       await sendToActiveTab({ action: 'SUBMIT_FORM' })
-    } else if (text === 'dictation' || text === 'start dictation' || text === 'dictation mode') {
-      setMode(Mode.DICTATION)
-      setMessage('Switched to Dictation Mode.')
-    } else if (text === 'command' || text === 'command mode' || text === 'stop dictation') {
-      setMode(Mode.COMMAND)
-      setMessage('Switched to Command Mode.')
     } else if (text === 'cancel') {
       await stopReadingPage()
       setMessage('Cancelled.')
@@ -580,7 +636,9 @@ export function createVoiceRouter(deps) {
           'blind mode', 'eyes free', 'enable blind mode', 'disable blind mode',
           'next tab', 'previous tab', 'prev tab', 'last tab', 'switch tab',
           'new tab', 'open new tab', 'close tab', 'close this tab', 'close current tab',
-        ].includes(lower) || extractSpokenNumber(transcript, true) !== null
+          'recalibrate', 'recenter', 'recenter cursor', 'recenter the cursor',
+          'draft an email', 'draft email', 'compose email', 'compose an email', 'write an email', 'new email',
+        ].includes(lower) || matchModeCommand(lower) !== null || extractSpokenNumber(transcript, true) !== null
 
       if (isActionCommand) {
         await executeVoiceCommand(transcript)

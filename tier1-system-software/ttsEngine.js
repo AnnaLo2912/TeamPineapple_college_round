@@ -8,15 +8,32 @@ import { exec, spawn } from 'child_process'
 
 let activeTtsProcess = null
 let isSpeaking = false
+let speechCooldownUntil = 0
+let lastSpokenText = ''
 
 export function isTtsSpeaking() {
-  return isSpeaking
+  return isSpeaking || Date.now() < speechCooldownUntil
+}
+
+export function getLastSpokenText() {
+  return lastSpokenText
+}
+
+export function stopSpeaking() {
+  if (activeTtsProcess) {
+    try {
+      activeTtsProcess.kill()
+    } catch {}
+    activeTtsProcess = null
+  }
+  isSpeaking = false
 }
 
 export function speak(text, interrupt = true) {
   if (!text || typeof text !== 'string') return Promise.resolve()
 
   const sanitized = text.replace(/["`$]/g, ' ')
+  lastSpokenText = sanitized
 
   if (interrupt && activeTtsProcess) {
     try {
@@ -39,11 +56,10 @@ export function speak(text, interrupt = true) {
 
     const onDone = () => {
       activeTtsProcess = null
-      // 500ms safety buffer so laptop mic doesn't pick up trailing speaker sound
-      setTimeout(() => {
-        isSpeaking = false
-        resolve()
-      }, 500)
+      isSpeaking = false
+      // 400ms safety buffer so laptop mic doesn't pick up trailing speaker sound
+      speechCooldownUntil = Date.now() + 400
+      resolve()
     }
 
     activeTtsProcess.on('close', onDone)

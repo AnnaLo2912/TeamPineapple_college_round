@@ -6,7 +6,7 @@ import ArticleReadingBenchmark from './components/ArticleReadingBenchmark';
 import TrajectoryReplayCanvas from './components/TrajectoryReplayCanvas';
 import ComparativeDashboard from './components/ComparativeDashboard';
 import JudgingSummaryModal from './components/JudgingSummaryModal';
-import { Sparkles, Shield, Compass, HeartHandshake } from 'lucide-react';
+import { Shield, Compass } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');

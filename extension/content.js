@@ -66,14 +66,48 @@
     }
   }
 
+  function isBackspaceCommandString(str) {
+    if (!str) return false;
+    const clean = str.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    return /^(?:backspace|back\s*space|delete\s*word|delete\s*last\s*word|delete|delete\s*that|delete\s*text|erase\s*word|erase\s*last\s*word|erase\s*that|erase\s*text|undo\s*word|remove\s*word)(?:\s+(?:command|please|it|that|word))?$/i.test(clean);
+  }
+
+  function isClearCommandString(str) {
+    if (!str) return false;
+    const clean = str.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    return /^(?:clear\s+(?:the\s+)?(?:text|input|field|all|screen|box)|clear\s*all(?:\s*text)?|clear|delete\s*all|erase\s*all(?:\s*text)?|reset\s+(?:text|input|field))(?:\s+(?:command|please|it|that))?$/i.test(clean);
+  }
+
+  const TRAILING_BACKSPACE_REGEX = /(?:[\s,]+|^)(?:backspace|back\s*space|delete\s*word|delete\s*last\s*word|delete|erase\s*word|undo\s*word)(?:\s+(?:command|please|it|that|word))?[.!?]*$/i;
+  const TRAILING_CLEAR_REGEX = /(?:[\s,]+|^)(?:clear\s+(?:the\s+)?(?:text|input|field|all|box)|clear\s*all(?:\s*text)?|clear|delete\s*all|erase\s*all)(?:\s+(?:command|please|it|that))?[.!?]*$/i;
+
   /**
    * Safely insert dictated text into target input without auto-submitting forms
    */
   function insertDictatedText(text) {
+    if (!text) return { success: false };
+
+    if (isBackspaceCommandString(text)) {
+      return backspaceLastWord();
+    }
+    if (isClearCommandString(text)) {
+      return clearInputText();
+    }
+    if (TRAILING_BACKSPACE_REGEX.test(text)) {
+      const withoutCmd = text.replace(TRAILING_BACKSPACE_REGEX, '').trim();
+      if (withoutCmd) {
+        insertDictatedText(withoutCmd);
+      }
+      return backspaceLastWord();
+    }
+    if (TRAILING_CLEAR_REGEX.test(text)) {
+      return clearInputText();
+    }
+
     let target = lastFocusedElement || document.activeElement;
 
     if (!target || !isEditableElement(target)) {
-      target = eyesFreeSearchInput || findPrimarySearchInput();
+      target = eyesFreeSearchInput || findPrimarySearchInput() || document.getElementById('voice-typing-benchmark-input') || document.getElementById('typingInputField');
       if (target && isEditableElement(target)) {
         lastFocusedElement = target;
         try { target.focus(); } catch (e) {}
@@ -502,6 +536,9 @@
       const inputs = Array.from(document.querySelectorAll('input, textarea, [contenteditable="true"]'));
       target = inputs.find(el => isEditableElement(el) && el.offsetParent !== null) || null;
     }
+    if (!target || !isEditableElement(target)) {
+      target = document.getElementById('voice-typing-benchmark-input') || document.getElementById('typingInputField');
+    }
 
     if (!target || !isEditableElement(target)) {
       return { success: false, error: 'No active text field focused.' };
@@ -540,6 +577,9 @@
     if (!isEditableElement(target)) {
       const inputs = Array.from(document.querySelectorAll('input, textarea, [contenteditable="true"]'));
       target = inputs.find(el => isEditableElement(el) && el.offsetParent !== null) || null;
+    }
+    if (!target || !isEditableElement(target)) {
+      target = document.getElementById('voice-typing-benchmark-input') || document.getElementById('typingInputField');
     }
 
     if (!target || !isEditableElement(target)) {

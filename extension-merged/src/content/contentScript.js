@@ -165,8 +165,45 @@ function stopFieldDictation(reason = 'cursor_moved') {
   setTimeout(() => cursorOverlay?.hideStatus(), 1600)
 }
 
+function isBackspaceCommandString(str) {
+  if (!str) return false
+  const clean = str.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  return /^(?:backspace|back\s*space|delete\s*word|delete\s*last\s*word|delete|delete\s*that|delete\s*text|erase\s*word|erase\s*last\s*word|erase\s*that|erase\s*text|undo\s*word|remove\s*word)(?:\s+(?:command|please|it|that|word))?$/i.test(clean)
+}
+
+function isClearCommandString(str) {
+  if (!str) return false
+  const clean = str.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  return /^(?:clear\s+(?:the\s+)?(?:text|input|field|all|screen|box)|clear\s*all(?:\s*text)?|clear|delete\s*all|erase\s*all(?:\s*text)?|reset\s+(?:text|input|field))(?:\s+(?:command|please|it|that))?$/i.test(clean)
+}
+
+const TRAILING_BACKSPACE_REGEX = /(?:[\s,]+|^)(?:backspace|back\s*space|delete\s*word|delete\s*last\s*word|delete|erase\s*word|undo\s*word)(?:\s+(?:command|please|it|that|word))?[.!?]*$/i
+const TRAILING_CLEAR_REGEX = /(?:[\s,]+|^)(?:clear\s+(?:the\s+)?(?:text|input|field|all|box)|clear\s*all(?:\s*text)?|clear|delete\s*all|erase\s*all)(?:\s+(?:command|please|it|that))?[.!?]*$/i
+
 function insertTextIntoElement(target, text) {
   if (!target || !text) return
+
+  if (isBackspaceCommandString(text)) {
+    backspaceLastWord()
+    return
+  }
+  if (isClearCommandString(text)) {
+    clearInputText()
+    return
+  }
+  if (TRAILING_BACKSPACE_REGEX.test(text)) {
+    const withoutCmd = text.replace(TRAILING_BACKSPACE_REGEX, '').trim()
+    if (withoutCmd) {
+      insertTextIntoElement(target, withoutCmd)
+    }
+    backspaceLastWord()
+    return
+  }
+  if (TRAILING_CLEAR_REGEX.test(text)) {
+    clearInputText()
+    return
+  }
+
   const tagName = target.tagName ? target.tagName.toLowerCase() : ''
   if (tagName === 'input' || tagName === 'textarea') {
     const start = target.selectionStart !== null ? target.selectionStart : target.value.length
@@ -203,6 +240,118 @@ function insertTextIntoElement(target, text) {
     target.focus?.()
     document.execCommand('insertText', false, text)
   }
+}
+
+function backspaceLastWord() {
+  const target =
+    activeDictationField ||
+    (isEditableTextInput(document.activeElement) ? document.activeElement : null) ||
+    document.querySelector('textarea:focus, input:focus') ||
+    document.getElementById('voice-typing-benchmark-input') ||
+    document.getElementById('typingInputField')
+
+  if (!target || !isEditableTextInput(target)) {
+    cursorOverlay?.showStatus('⚠️ No text field focused to backspace')
+    setTimeout(() => cursorOverlay?.hideStatus(), 1200)
+    return { success: false, error: 'No active text field focused.' }
+  }
+
+  const tagName = target.tagName ? target.tagName.toLowerCase() : ''
+  if (tagName === 'input' || tagName === 'textarea') {
+    const value = target.value || ''
+    if (!value) {
+      cursorOverlay?.showStatus('⌫ Field is already empty')
+      setTimeout(() => {
+        if (activeDictationField) cursorOverlay?.showStatus('✍️ Speak to write (say "Done" or "Search")')
+      }, 1200)
+      return { success: true, message: 'Text field is empty.' }
+    }
+
+    // Delete last word and trailing whitespace
+    const newValue = value.replace(/\s*\S+\s*$/, '')
+
+    const proto = tagName === 'textarea'
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype
+    const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set
+    if (nativeSetter) {
+      try { nativeSetter.call(target, newValue) } catch (_) { target.value = newValue }
+    } else {
+      target.value = newValue
+    }
+
+    const pos = newValue.length
+    if (typeof target.setSelectionRange === 'function') {
+      try { target.setSelectionRange(pos, pos) } catch (_) {}
+    }
+
+    target.dispatchEvent(new Event('input', { bubbles: true }))
+    target.dispatchEvent(new Event('change', { bubbles: true }))
+    cursorOverlay?.showStatus('⌫ Deleted last word')
+    setTimeout(() => {
+      if (activeDictationField) cursorOverlay?.showStatus('✍️ Speak to write (say "Done" or "Search")')
+    }, 1200)
+    return { success: true, message: 'Deleted previous word.' }
+  } else if (target.isContentEditable || target.getAttribute('contenteditable') === 'true') {
+    target.focus?.()
+    document.execCommand('delete', false, null)
+    cursorOverlay?.showStatus('⌫ Backspaced')
+    setTimeout(() => {
+      if (activeDictationField) cursorOverlay?.showStatus('✍️ Speak to write (say "Done" or "Search")')
+    }, 1200)
+    return { success: true, message: 'Deleted previous word.' }
+  }
+
+  return { success: false, error: 'Cannot backspace on target element.' }
+}
+
+function clearInputText() {
+  const target =
+    activeDictationField ||
+    (isEditableTextInput(document.activeElement) ? document.activeElement : null) ||
+    document.querySelector('textarea:focus, input:focus') ||
+    document.getElementById('voice-typing-benchmark-input') ||
+    document.getElementById('typingInputField')
+
+  if (!target || !isEditableTextInput(target)) {
+    cursorOverlay?.showStatus('⚠️ No text field focused to clear')
+    setTimeout(() => cursorOverlay?.hideStatus(), 1200)
+    return { success: false, error: 'No active text field focused.' }
+  }
+
+  const tagName = target.tagName ? target.tagName.toLowerCase() : ''
+  if (tagName === 'input' || tagName === 'textarea') {
+    const proto = tagName === 'textarea'
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype
+    const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set
+    if (nativeSetter) {
+      try { nativeSetter.call(target, '') } catch (_) { target.value = '' }
+    } else {
+      target.value = ''
+    }
+
+    if (typeof target.setSelectionRange === 'function') {
+      try { target.setSelectionRange(0, 0) } catch (_) {}
+    }
+
+    target.dispatchEvent(new Event('input', { bubbles: true }))
+    target.dispatchEvent(new Event('change', { bubbles: true }))
+    cursorOverlay?.showStatus('🗑️ Cleared text field')
+    setTimeout(() => {
+      if (activeDictationField) cursorOverlay?.showStatus('✍️ Speak to write (say "Done" or "Search")')
+    }, 1200)
+    return { success: true, message: 'Cleared text field.' }
+  } else if (target.isContentEditable || target.getAttribute('contenteditable') === 'true') {
+    target.innerHTML = ''
+    cursorOverlay?.showStatus('🗑️ Cleared text field')
+    setTimeout(() => {
+      if (activeDictationField) cursorOverlay?.showStatus('✍️ Speak to write (say "Done" or "Search")')
+    }, 1200)
+    return { success: true, message: 'Cleared text field.' }
+  }
+
+  return { success: false, error: 'Cannot clear target element.' }
 }
 
 function initOverlay() {
@@ -404,11 +553,22 @@ function setupMessageHandlers() {
       }
     }
     if (message?.action === 'INSERT_DICTATION' || message?.type === 'INSERT_DICTATION') {
+      if (isBackspaceCommandString(message.text)) {
+        const res = backspaceLastWord()
+        sendResponse(res || { success: true })
+        return true
+      }
+      if (isClearCommandString(message.text)) {
+        const res = clearInputText()
+        sendResponse(res || { success: true })
+        return true
+      }
       const target =
         activeDictationField ||
         (isEditableTextInput(document.activeElement) ? document.activeElement : null) ||
         document.querySelector('textarea:focus, input:focus') ||
-        (document.getElementById('typingInputField') ? document.getElementById('typingInputField') : null)
+        document.getElementById('voice-typing-benchmark-input') ||
+        document.getElementById('typingInputField')
       if (target && message.text) {
         if (!activeDictationField) {
           activeDictationField = target
@@ -428,6 +588,16 @@ function setupMessageHandlers() {
         sendResponse({ success: true })
         return true
       }
+    }
+    if (message?.action === 'BACKSPACE_WORD' || message?.type === 'BACKSPACE_WORD') {
+      const res = backspaceLastWord()
+      sendResponse(res || { success: true })
+      return true
+    }
+    if (message?.action === 'CLEAR_TEXT' || message?.type === 'CLEAR_TEXT') {
+      const res = clearInputText()
+      sendResponse(res || { success: true })
+      return true
     }
   })
 

@@ -882,7 +882,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'VOICE_COMMAND') {
-    if (message.text) void voiceRouter.handleTranscript(message.text)
+    if (message.action === 'BACKSPACE_WORD') {
+      void voiceRouter.sendToActiveTab({ action: 'BACKSPACE_WORD' })
+    } else if (message.action === 'CLEAR_TEXT') {
+      void voiceRouter.sendToActiveTab({ action: 'CLEAR_TEXT' })
+    } else if (message.text) {
+      void voiceRouter.handleTranscript(message.text)
+    }
     sendResponse({ success: true })
     return true
   }

@@ -643,6 +643,26 @@ body {
   width: 100%;
 }
 
+.btn-benchmark {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(6, 182, 212, 0.25) 100%);
+  color: #a5f3fc;
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  margin-top: 6px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-benchmark:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.35) 0%, rgba(6, 182, 212, 0.45) 100%);
+  color: #ffffff;
+  border-color: rgba(6, 182, 212, 0.7);
+  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35);
+  transform: translateY(-1px);
+}
+
 /* Eyes-Free Blind Navigation Card */
 .blind-mode-card {
   display: flex;

@@ -81,6 +81,27 @@ function resolveWebsiteUrl(target) {
   return `https://www.google.com/search?q=${encodeURIComponent(clean)}`
 }
 
+// Gmail compose pop-out (view=cm) — opens a fresh draft window.
+const EMAIL_COMPOSE_URL = 'https://mail.google.com/mail/?view=cm&fs=1&tf=1'
+
+// Spoken phrases that switch operating mode. Keys are normalised (lowercase,
+// punctuation stripped, whitespace collapsed) so they match `executeVoiceCommand`.
+const MODE_COMMANDS = {
+  command: ['command', 'command mode', 'stop dictation'],
+  dictation: ['dictation', 'dictation mode', 'start dictation'],
+  reading: ['reading', 'reading mode', 'read mode'],
+  blind: ['blind mode', 'eyes free', 'eyes free mode', 'enable blind mode', 'start blind mode'],
+  'disable-blind': ['disable blind mode', 'stop blind mode', 'exit blind mode', 'turn off blind mode'],
+}
+
+function matchModeCommand(text) {
+  if (!text) return null
+  for (const [mode, phrases] of Object.entries(MODE_COMMANDS)) {
+    if (phrases.includes(text)) return mode
+  }
+  return null
+}
+
 function isRestrictedUrl(url) {
   const u = url || ''
   return (
@@ -95,7 +116,7 @@ function isRestrictedUrl(url) {
 }
 
 export function createVoiceRouter(deps) {
-  const { speak, stopSpeak, pauseSpeak, resumeSpeak, broadcast, switchTab, openNewTab, closeActiveTab, openUrl } = deps
+  const { speak, stopSpeak, pauseSpeak, resumeSpeak, broadcast, switchTab, openNewTab, closeActiveTab, openUrl, openUrlNewTab, recenter } = deps
 
   let activeMode = Mode.COMMAND
   let isReadingActive = false
@@ -208,6 +229,7 @@ export function createVoiceRouter(deps) {
       'search', 'execute search', 'submit search', 'google search', 'run search',
       'read links', 'read results', 'read top links', 'read search results', 'read result links',
       'show numbered links', 'hide numbered links',
+      'refresh numbered links', 'refresh links', 'refresh numbers', 'update numbered links',
       'blind mode', 'eyes free', 'eyes free mode', 'enable blind mode', 'start blind mode',
       'disable blind mode', 'stop blind mode', 'exit blind mode', 'turn off blind mode',
       'scroll down', 'scroll up', 'page down', 'page up',
@@ -216,8 +238,11 @@ export function createVoiceRouter(deps) {
       'backspace', 'delete word', 'back space',
       'next tab', 'previous tab', 'prev tab', 'last tab', 'switch tab',
       'new tab', 'open new tab', 'close tab', 'close this tab', 'close current tab',
+      'recalibrate', 'recenter', 'recenter cursor', 'recenter the cursor',
+      'draft an email', 'draft email', 'compose email', 'compose an email', 'write an email', 'new email',
     ]
     if (blindCommands.includes(lower)) return true
+    if (matchModeCommand(lower)) return true
     const normalized = normalizeSpokenNumbers(lower)
     if (/^(?:click|open|select|press|go\s*to)\s+(?:link\s+|result\s+|number\s+|#)?\d{1,3}$/i.test(normalized)) return true
     if (/^(?:link|result|number)\s+#?\d{1,3}$/i.test(normalized)) return true
@@ -360,14 +385,35 @@ export function createVoiceRouter(deps) {
       return
     }
 
-    if (text === 'blind mode' || text === 'eyes free' || text === 'eyes free mode' || text === 'enable blind mode' || text === 'start blind mode') {
+    const modeCommand = matchModeCommand(text)
+    if (modeCommand === 'blind') {
       setMessage('Command: Enable Eyes-Free Blind Mode')
       await updateBlindMode(true)
       return
     }
-    if (text === 'disable blind mode' || text === 'stop blind mode' || text === 'exit blind mode' || text === 'turn off blind mode') {
+    if (modeCommand === 'disable-blind') {
       setMessage('Command: Disable Eyes-Free Blind Mode')
       await updateBlindMode(false)
+      return
+    }
+    if (modeCommand === 'command') {
+      setMessage('Command: Command Mode')
+      if (isReadingActive) await stopReadingPage()
+      setMode(Mode.COMMAND)
+      setMessage('Switched to Command Mode.')
+      return
+    }
+    if (modeCommand === 'dictation') {
+      setMessage('Command: Dictation Mode')
+      if (isReadingActive) await stopReadingPage()
+      setMode(Mode.DICTATION)
+      setMessage('Switched to Dictation Mode.')
+      return
+    }
+    if (modeCommand === 'reading') {
+      setMessage('Command: Reading Mode')
+      setMode(Mode.READING)
+      setMessage('Switched to Reading Mode.')
       return
     }
 
@@ -428,6 +474,13 @@ export function createVoiceRouter(deps) {
       setMessage('Hidden link numbers.')
       return
     }
+    if (text === 'refresh numbered links' || text === 'refresh links' || text === 'refresh numbers' || text === 'update numbered links') {
+      setMessage('Command: Refresh numbered links')
+      const res = await sendToActiveTab({ action: 'SHOW_NUMBERED_LINKS' })
+      setNumbersActive(true)
+      setMessage(`Showing ${res?.count || 0} numbered links.`)
+      return
+    }
 
     if (text === 'next tab' || text === 'switch tab' || text === 'next page tab') {
       setMessage('Command: Next tab')
@@ -451,6 +504,23 @@ export function createVoiceRouter(deps) {
       setMessage('Command: Close tab')
       if (closeActiveTab) closeActiveTab()
       setMessage('Closed the tab.')
+      return
+    }
+
+    if (text === 'recalibrate' || text === 'recenter' || text === 'recenter cursor' || text === 'recenter the cursor') {
+      setMessage('Command: Recenter')
+      if (recenter) recenter()
+      setMessage('Recentering in 1.8s — look forward.')
+      return
+    }
+
+    if (
+      text === 'draft an email' || text === 'draft email' || text === 'compose email' ||
+      text === 'compose an email' || text === 'write an email' || text === 'new email'
+    ) {
+      setMessage('Command: Draft an email')
+      if (openUrlNewTab) openUrlNewTab(EMAIL_COMPOSE_URL)
+      setMessage('Opening a new email draft...')
       return
     }
 
@@ -531,25 +601,9 @@ export function createVoiceRouter(deps) {
     } else if (text === 'submit' || text === 'submit form' || text === 'send form') {
       setMessage('Command: Submit form')
       await sendToActiveTab({ action: 'SUBMIT_FORM' })
-    } else if (
-      text === 'dictate' ||
-      text === 'dicatate' ||
-      text === 'start dictation' ||
-      text === 'dictate text' ||
-      text === 'type' ||
-      text === 'start typing' ||
-      text === 'dictation' ||
-      text === 'dictation mode'
-    ) {
-      setMessage('Command: Start Dictation')
-      const res = await sendToActiveTab({ action: 'START_DICTATION_COMMAND', type: 'START_DICTATION_COMMAND' })
+    } else if (text === 'dictation' || text === 'start dictation' || text === 'dictation mode') {
       setMode(Mode.DICTATION)
-      if (res && res.success) {
-        setMessage('Dictation active. Speak what you want to write.')
-      } else {
-        setMessage('Switched to Dictation Mode. Speak what you want to write.')
-      }
-      return
+      setMessage('Switched to Dictation Mode.')
     } else if (text === 'command' || text === 'command mode' || text === 'stop dictation') {
       setMode(Mode.COMMAND)
       setMessage('Switched to Command Mode.')
@@ -633,15 +687,13 @@ export function createVoiceRouter(deps) {
           'submit', 'submit form', 'send form',
           'show numbers', 'show links', 'show badges', 'numbers', 'show numbered links',
           'hide numbers', 'hide links', 'hide badges', 'hide numbered links',
+          'refresh numbered links', 'refresh links', 'refresh numbers', 'update numbered links',
           'go to search', 'cursor go to search', 'search bar', 'focus search',
           'read links', 'read results', 'read top links',
           'blind mode', 'eyes free', 'enable blind mode', 'disable blind mode',
           'next tab', 'previous tab', 'prev tab', 'last tab', 'switch tab',
           'new tab', 'open new tab', 'close tab', 'close this tab', 'close current tab',
-        ].includes(lower) ||
-        lower.startsWith('click ') ||
-        lower.endsWith(' click') ||
-        extractSpokenNumber(transcript, true) !== null
+        ].includes(lower) || extractSpokenNumber(transcript, true) !== null
 
       if (isActionCommand) {
         await sendToActiveTab({ action: 'BLUR_ACTIVE_FIELD' })

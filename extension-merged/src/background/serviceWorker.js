@@ -139,6 +139,11 @@ function openUrl(url) {
   })
 }
 
+function openUrlNewTab(url) {
+  if (!url) return
+  chrome.tabs.create({ url, active: true }, () => void chrome.runtime.lastError)
+}
+
 // ---------------------------------------------------------------------------
 // Offscreen document management
 // ---------------------------------------------------------------------------
@@ -256,6 +261,8 @@ const voiceRouter = createVoiceRouter({
   openNewTab,
   closeActiveTab,
   openUrl,
+  openUrlNewTab,
+  recenter: () => forwardToAllTabs({ type: 'RECENTER', timestamp: Date.now() }),
   broadcast: (message) => {
     chrome.runtime.sendMessage(message, () => void chrome.runtime.lastError)
   },

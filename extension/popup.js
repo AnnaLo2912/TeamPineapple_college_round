@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const grantMicBtn = document.getElementById('grantMicBtn');
   const toggleNumbersBtn = document.getElementById('toggleNumbersBtn');
   const toggleNumbersText = document.getElementById('toggleNumbersText');
+  const openBenchmarkBtn = document.getElementById('openBenchmarkBtn');
   const modeBlindBtn = document.getElementById('modeBlind');
   const blindModeToggle = document.getElementById('blindModeToggle');
   const blindModeCard = document.getElementById('blindModeCard');
@@ -1731,6 +1732,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (toggleNumbersBtn) {
     toggleNumbersBtn.addEventListener('click', toggleNumberedLinksOverlay);
+  }
+
+  if (openBenchmarkBtn) {
+    openBenchmarkBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: 'http://localhost:5173' });
+    });
   }
 
   copyBtn.addEventListener('click', async () => {

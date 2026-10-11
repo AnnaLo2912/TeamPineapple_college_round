@@ -254,6 +254,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const openBenchmarkBtn = document.getElementById('openBenchmarkBtn');
+  if (openBenchmarkBtn) {
+    openBenchmarkBtn.addEventListener('click', () => {
+      if (chrome.tabs && chrome.tabs.create) {
+        chrome.tabs.create({ url: 'http://localhost:5173' });
+      } else {
+        window.open('http://localhost:5173', '_blank');
+      }
+    });
+  }
+
   if (copyBtn) {
     copyBtn.addEventListener('click', async () => {
       const text = transcriptText.innerText;

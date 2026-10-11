@@ -1,7 +1,7 @@
 import { DEFAULT_CONFIG } from '../shared/types.js'
 import { debugLog, debugEvery } from '../shared/debug.js'
 import { WebcamManager } from './WebcamManager.js'
-import { initFaceTracker, detectFaceLandmarks } from './FaceTracker.js'
+import { initFaceTracker, detectFaceLandmarks, isFaceTrackerReady } from './FaceTracker.js'
 import { initHandTracker, detectHandLandmarks, isHandTrackerReady } from './HandTracker.js'
 import { SpeechRecognizer } from './SpeechRecognizer.js'
 import { initVoiceEngine } from './VoiceEngine.js'
@@ -38,21 +38,17 @@ async function startTracking() {
   starting = true
   debugLog('offscreen', 'startTracking begin', { mode })
   try {
-    const faceReady = await initFaceTracker()
-    debugLog('offscreen', 'face tracker ready:', faceReady)
-    if (!faceReady) {
-      console.error('Offscreen: face tracker failed to initialize')
-      return
-    }
-    if (mode === 'hand' && !isHandTrackerReady()) {
-      await initHandTracker()
-    }
-
+    // Start webcam first so camera permission check/prompt is triggered immediately
     await webcam.start()
     webcam.onFrame(processFrame)
     running = true
     debugLog('offscreen', 'tracking running')
     speechRecognizer.start()
+
+    const faceReady = await initFaceTracker()
+    debugLog('offscreen', 'face tracker ready:', faceReady)
+    const handReady = await initHandTracker()
+    debugLog('offscreen', 'hand tracker ready:', handReady)
   } catch (error) {
     console.error('Offscreen: failed to start tracking', error)
     debugLog('offscreen', 'startTracking failed -> permission required', error)
@@ -80,24 +76,44 @@ async function processFrame(video, timestamp) {
   try {
     let point = null
     let confidence = 0
+    let activeMode = mode
 
     if (mode === 'hand' && isHandTrackerReady()) {
       const result = await detectHandLandmarks(video, timestamp)
       point = result.cursorPoint
       confidence = result.confidence
-    } else {
+    } else if (isFaceTrackerReady()) {
       const result = await detectFaceLandmarks(video, timestamp)
       point = result.cursorPoint
       confidence = result.confidence
     }
 
+    // Auto-detect fallback: if face is not found, check hand; or vice versa
+    if (!point) {
+      if (mode === 'face' && isHandTrackerReady()) {
+        const handResult = await detectHandLandmarks(video, timestamp)
+        if (handResult.cursorPoint) {
+          point = handResult.cursorPoint
+          confidence = handResult.confidence
+          activeMode = 'hand'
+        }
+      } else if (mode === 'hand' && isFaceTrackerReady()) {
+        const faceResult = await detectFaceLandmarks(video, timestamp)
+        if (faceResult.cursorPoint) {
+          point = faceResult.cursorPoint
+          confidence = faceResult.confidence
+          activeMode = 'face'
+        }
+      }
+    }
+
     debugEvery('offscreen:frame', 15, 'frame', {
-      mode,
+      mode: activeMode,
       hasPoint: point !== null,
       confidence: Math.round(confidence * 100) / 100,
     })
 
-    send({ type: 'TRACKING_RESULT', rawPoint: point, confidence, mode })
+    send({ type: 'TRACKING_RESULT', rawPoint: point, confidence, mode: activeMode })
   } finally {
     busy = false
   }

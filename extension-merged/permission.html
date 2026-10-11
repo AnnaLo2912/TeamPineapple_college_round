@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Handsfree - Microphone Setup</title>
+  <title>Handsfree - Camera & Microphone Setup</title>
   <link rel="stylesheet" href="popup.css">
   <style>
     body {
@@ -16,38 +16,71 @@
       font-family: 'Inter', sans-serif;
     }
     .permission-card {
-      width: 420px;
+      width: 440px;
       padding: 32px;
-      background: rgba(18, 24, 38, 0.9);
+      background: rgba(18, 24, 38, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 20px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
       text-align: center;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 20px;
+      gap: 18px;
     }
-    .mic-icon-large {
-      width: 64px;
-      height: 64px;
+    .icons-row {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: center;
+    }
+    .icon-badge {
+      width: 56px;
+      height: 56px;
       border-radius: 50%;
       background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       color: #ffffff;
-      box-shadow: 0 0 24px rgba(99, 102, 241, 0.5);
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+    }
+    .icon-badge.cam {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
     }
     h2 {
       font-family: 'Outfit', sans-serif;
       font-size: 22px;
       color: #f8fafc;
+      margin: 0;
     }
     p {
       font-size: 14px;
       color: #94a3b8;
       line-height: 1.6;
+      margin: 0;
+    }
+    .permission-items {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+    }
+    .permission-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+    .permission-item strong {
+      color: #f1f5f9;
     }
     .grant-btn {
       width: 100%;
@@ -92,21 +125,40 @@
 </head>
 <body>
   <div class="permission-card">
-    <div class="mic-icon-large">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
-        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-        <line x1="12" y1="19" x2="12" y2="22"/>
-      </svg>
+    <div class="icons-row">
+      <div class="icon-badge cam">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 7l-7 5 7 5V7z"/>
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+        </svg>
+      </div>
+      <div class="icon-badge">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+        </svg>
+      </div>
     </div>
 
-    <h2>Microphone Setup</h2>
-    <p>Handsfree requires microphone access to listen to your voice commands and transcribe speech.</p>
+    <h2>Camera &amp; Microphone Setup</h2>
+    <p>Handsfree needs access to your camera and microphone to enable full handsfree browsing.</p>
 
-    <button id="requestBtn" class="grant-btn" type="button">Allow Microphone Access</button>
+    <div class="permission-items">
+      <div class="permission-item">
+        <span>📷</span>
+        <div><strong>Camera:</strong> Tracks your head &amp; hand movements to glide the cursor</div>
+      </div>
+      <div class="permission-item">
+        <span>🎙️</span>
+        <div><strong>Microphone:</strong> Listens to voice commands &amp; enables voice typing</div>
+      </div>
+    </div>
+
+    <button id="requestBtn" class="grant-btn" type="button">Allow Camera &amp; Microphone Access</button>
 
     <div id="statusMsg" class="status-msg status-info">
-      Click "Allow Microphone Access" above and select <strong>Allow</strong> in the Chrome popup.
+      Click the button above and select <strong>Allow</strong> in the Chrome browser prompt.
     </div>
   </div>
 

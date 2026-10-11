@@ -3,10 +3,15 @@ const retry = document.getElementById('retry')
 
 async function requestCamera() {
   retry.style.display = 'none'
-  msg.textContent = 'Requesting camera and microphone access…'
+  msg.textContent = 'Requesting camera & microphone permission…'
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    let stream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    } catch {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true })
+    }
     stream.getTracks().forEach((track) => track.stop())
 
     chrome.runtime.sendMessage({ type: 'CAMERA_GRANTED' }, () => {

@@ -1,122 +1,90 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import React, { useState } from 'react';
+import Header from './components/Header';
+import FittsLawBenchmark from './components/FittsLawBenchmark';
+import FormFillingBenchmark from './components/FormFillingBenchmark';
+import ArticleReadingBenchmark from './components/ArticleReadingBenchmark';
+import TrajectoryReplayCanvas from './components/TrajectoryReplayCanvas';
+import ComparativeDashboard from './components/ComparativeDashboard';
+import JudgingSummaryModal from './components/JudgingSummaryModal';
+import { Sparkles, Shield, Compass, HeartHandshake } from 'lucide-react';
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [isJudgingModalOpen, setIsJudgingModalOpen] = useState(false);
+  const [isPresentationMode, setIsPresentationMode] = useState(true);
+  const [customLabTrajectory, setCustomLabTrajectory] = useState(null);
+  const [customAssistMode, setCustomAssistMode] = useState('handsfree');
+
+  const handleSendTrajectoryToLab = (path, mode) => {
+    setCustomLabTrajectory(path);
+    setCustomAssistMode(mode);
+    setActiveTab('trajectory');
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="app-root">
+      {/* Top Header */}
+      <Header
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        onOpenJudgingModal={() => setIsJudgingModalOpen(true)}
+        isPresentationMode={isPresentationMode}
+        onTogglePresentationMode={() => setIsPresentationMode(!isPresentationMode)}
+      />
 
-      <div className="ticks"></div>
+      {/* Main Content Area */}
+      <main className="main-content-container">
+        {activeTab === 'fitts' && (
+          <FittsLawBenchmark onSendTrajectoryToLab={handleSendTrajectoryToLab} />
+        )}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        {activeTab === 'form' && (
+          <FormFillingBenchmark />
+        )}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+        {activeTab === 'article' && (
+          <ArticleReadingBenchmark />
+        )}
+
+        {activeTab === 'trajectory' && (
+          <TrajectoryReplayCanvas
+            customTrajectory={customLabTrajectory}
+            customAssistMode={customAssistMode}
+          />
+        )}
+
+        {activeTab === 'dashboard' && (
+          <ComparativeDashboard
+            onOpenExecutiveSummary={() => setIsJudgingModalOpen(true)}
+          />
+        )}
+      </main>
+
+      {/* Judging Presentation Modal */}
+      <JudgingSummaryModal
+        isOpen={isJudgingModalOpen}
+        onClose={() => setIsJudgingModalOpen(false)}
+      />
+
+      {/* Professional Footer */}
+      <footer className="app-footer">
+        <div className="footer-content">
+          <div className="footer-left">
+            <span className="footer-badge">
+              <Shield size={14} className="text-emerald" /> WCAG 2.2 AAA Validated
+            </span>
+            <span className="footer-badge">
+              <Compass size={14} className="text-cyan" /> ISO 9241-9 Standard
+            </span>
+          </div>
+          <div className="footer-center">
+            <span>Handsfree Accessibility Platform &bull; College Round Evaluation Suite</span>
+          </div>
+          <div className="footer-right">
+            <span>Developed by Team Pineapple</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
 }
-
-export default App

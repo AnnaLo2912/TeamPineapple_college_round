@@ -4,7 +4,15 @@ Add-Type -AssemblyName System.Speech
 try {
     $rec = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Select-Object -First 1
     if ($rec -ne $null) {
-        $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($rec.Culture)
+        try {
+            $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($rec.Id)
+        } catch {
+            try {
+                $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($rec.Culture)
+            } catch {
+                $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine
+            }
+        }
     } else {
         $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine
     }
@@ -16,18 +24,19 @@ try {
         'open google', 'google search', 'open browser', 'google chrome', 'open internet', 'google', 'browser', 'chrome',
         'open file explorer', 'file explorer', 'open files', 'open my files', 'open folders', 'explorer', 'files',
         'open notepad', 'notepad', 'open text editor', 'open notes',
-        'open calculator', 'calculator', 'calc',
+        'open calculator', 'calculator', 'calc', 'open calc', 'start calculator',
         'open settings', 'windows settings', 'settings',
         'open task manager', 'task manager',
-        'what is on screen', 'what is on my screen', "what's on screen", 'read screen', 'screen overview', 'active window', 'current window', 'where am i', 'desktop', 'screen',
+        'what is on screen', 'what is on my screen', "what's on screen", 'read screen', 'screen overview', 'active window', 'current window', 'where am i', 'desktop', 'screen', 'show screen', 'read desktop',
         'list windows', 'open windows', 'what windows are open',
         'open tools', 'open tools folder', 'tools folder', 'tools',
         'open brave', 'brave browser', 'brave',
+        'open edge', 'microsoft edge', 'edge',
         'open code', 'open visual studio code', 'visual studio code', 'open vs code', 'vs code',
         'open resume', 'my resume', 'resume',
         'what files are in downloads', 'read downloads', 'open downloads', 'downloads',
         'what files are in documents', 'read documents', 'open documents', 'documents',
-        'what files are on desktop', 'read desktop files',
+        'what files are on desktop', 'read desktop files', 'desktop files',
         'minimize window', 'minimize this window', 'minimize',
         'close window', 'close this window', 'close',
         'switch window', 'next window',
@@ -69,7 +78,7 @@ try {
             if ($result -ne $null -and $result.Text -ne $null) {
                 $confidence = [Math]::Round([float]$result.Confidence, 2)
                 # Keep accessible threshold so natural accents register smoothly
-                if ($confidence -ge 0.20) {
+                if ($confidence -ge 0.15) {
                     $recognizedText = $result.Text.Trim()
                     if ($recognizedText.Length -gt 0) {
                         Write-Output "RECOGNIZED:$recognizedText|$confidence"

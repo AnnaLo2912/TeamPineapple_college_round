@@ -66,7 +66,7 @@ export async function executeCommand(rawCommand) {
     return true
   }
 
-  if (cmd.includes('calculator') || cmd === 'open calculator' || cmd === 'calc') {
+  if (cmd.includes('calculator') || cmd.includes('calc')) {
     playEarcon('success')
     speak('Opening Calculator')
     exec('calc.exe')

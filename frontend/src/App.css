@@ -150,10 +150,17 @@
   gap: 6px;
 }
 
-.mode-btn.active.handsfree {
+.mode-btn.active.handsfree,
+.mode-btn.active.head {
   background: var(--accent-emerald);
   color: #042f2e;
   box-shadow: 0 2px 10px rgba(16, 185, 129, 0.4);
+}
+
+.mode-btn.active.hand {
+  background: #a855f7;
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(168, 85, 247, 0.4);
 }
 
 .mode-btn.active.conventional {
@@ -672,8 +679,15 @@
   gap: 8px;
 }
 
-.comparison-table .handsfree-col {
-  color: var(--accent-emerald);
+.comparison-table .handsfree-col,
+.comparison-table .head-col {
+  color: #34d399;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.comparison-table .hand-col {
+  color: #c084fc;
   font-family: var(--font-mono);
   font-weight: 700;
 }
@@ -682,6 +696,36 @@
   color: var(--accent-cyan);
   font-family: var(--font-mono);
   font-weight: 700;
+}
+
+.metric-tag-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: 4px;
+  color: #34d399;
+  font-weight: 700;
+  font-size: 10px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.metric-tag-baseline {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 10px;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .comparison-table .eval-finding-col {

@@ -61,7 +61,8 @@
       "resources": [
         "models/*",
         "models/wasm/*",
-        "icons/*"
+        "icons/*",
+        "evaluation.html"
       ],
       "matches": ["<all_urls>"]
     }

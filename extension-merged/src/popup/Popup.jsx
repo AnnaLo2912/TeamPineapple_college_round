@@ -374,6 +374,21 @@ const Popup = () => {
             <button style={styles.actionButton} onClick={handleRecenter} disabled={!state.isEnabled}>
               Recenter (Alt+R)
             </button>
+            <button
+              style={{
+                ...styles.actionButton,
+                marginTop: 8,
+                background: 'linear-gradient(135deg, #10b981, #059669)',
+                color: '#022c22',
+                fontWeight: 700,
+              }}
+              onClick={() => {
+                const url = chrome.runtime.getURL('evaluation.html')
+                chrome.tabs.create({ url })
+              }}
+            >
+              📊 Performance Benchmark (Req 8)
+            </button>
           </div>
         </>
       )}

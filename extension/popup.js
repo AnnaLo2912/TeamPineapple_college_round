@@ -196,6 +196,49 @@ document.addEventListener('DOMContentLoaded', () => {
   const MAX_RECORDING_DURATION_MS = 10000; // 10s max chunk duration
   const INITIAL_NO_SPEECH_TIMEOUT_MS = 10000; // 10s timeout if user does not speak
 
+  let pcmProcessor = null;
+  let pcmSamples = [];
+
+  function encodeWavBlob(samples, sampleRate) {
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
+    const writeString = (v, offset, str) => {
+      for (let i = 0; i < str.length; i++) v.setUint8(offset + i, str.charCodeAt(i));
+    };
+
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * 2, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // Mono PCM
+    view.setUint16(22, 1, true); // 1 channel
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++, offset += 2) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+    return new Blob([view], { type: 'audio/wav' });
+  }
+
+  function resampleTo16k(samples, fromRate) {
+    if (fromRate === 16000) return samples;
+    const ratio = fromRate / 16000;
+    const newLen = Math.round(samples.length / ratio);
+    const res = new Float32Array(newLen);
+    for (let i = 0; i < newLen; i++) {
+      res[i] = samples[Math.floor(i * ratio)] || 0;
+    }
+    return res;
+  }
+
   /**
    * Monitor audio volume stream for speech activity and auto-stop recorder on silence
    */
@@ -215,6 +258,23 @@ document.addEventListener('DOMContentLoaded', () => {
       vadAnalyser = audioContext.createAnalyser();
       vadAnalyser.fftSize = 512;
       source.connect(vadAnalyser);
+
+      // Connect PCM processor for clean 16kHz WAV encoding
+      pcmSamples = [];
+      try {
+        pcmProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+        pcmProcessor.onaudioprocess = (e) => {
+          if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+          const inputData = e.inputBuffer.getChannelData(0);
+          for (let i = 0; i < inputData.length; i++) {
+            pcmSamples.push(inputData[i]);
+          }
+        };
+        source.connect(pcmProcessor);
+        pcmProcessor.connect(audioContext.destination);
+      } catch (procErr) {
+        console.warn('[Handsfree PCM] ScriptProcessor init warning:', procErr);
+      }
 
       const bufferLength = vadAnalyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
@@ -280,6 +340,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (vadAnimationFrame) {
       cancelAnimationFrame(vadAnimationFrame);
       vadAnimationFrame = null;
+    }
+    if (pcmProcessor) {
+      try { pcmProcessor.disconnect(); } catch (e) {}
+      pcmProcessor = null;
     }
   }
 
@@ -399,8 +463,25 @@ document.addEventListener('DOMContentLoaded', () => {
       // Handle recording stop event
       mediaRecorder.onstop = async (event) => {
         clearInterval(recordingTimer);
-        const actualMime = (mediaRecorder && mediaRecorder.mimeType) || (event && event.target && event.target.mimeType) || mimeType || 'audio/webm';
-        recordedAudioBlob = new Blob(audioChunks, { type: actualMime });
+
+        let uploadBlob = null;
+        let actualMime = 'audio/webm';
+        if (pcmSamples && pcmSamples.length > 0 && audioContext) {
+          try {
+            const resampled = resampleTo16k(pcmSamples, audioContext.sampleRate || 48000);
+            uploadBlob = encodeWavBlob(resampled, 16000);
+            actualMime = 'audio/wav';
+          } catch (pcmErr) {
+            console.warn('[Handsfree WAV] PCM encoding fallback:', pcmErr);
+            actualMime = (mediaRecorder && mediaRecorder.mimeType) || (event && event.target && event.target.mimeType) || mimeType || 'audio/webm';
+            uploadBlob = new Blob(audioChunks, { type: actualMime });
+          }
+        } else {
+          actualMime = (mediaRecorder && mediaRecorder.mimeType) || (event && event.target && event.target.mimeType) || mimeType || 'audio/webm';
+          uploadBlob = new Blob(audioChunks, { type: actualMime });
+        }
+
+        recordedAudioBlob = uploadBlob;
 
         // Stop hardware mic stream
         stopAudioStream();
@@ -673,7 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const formData = new FormData();
-      const filename = mimeType.includes('mp4') ? 'audio.mp4' : 'audio.webm';
+      const filename = mimeType.includes('wav') ? 'audio.wav' : (mimeType.includes('mp4') ? 'audio.mp4' : 'audio.webm');
       formData.append('file', blob, filename);
       formData.append('model', 'saaras:v3');
 

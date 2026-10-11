@@ -86,12 +86,18 @@ router.post("/transcribe", upload.single("file"), async (req, res) => {
       let userErrorMsg = "Sarvam STT service error.";
       if (responseStatus === 401) {
         userErrorMsg = "Sarvam API authentication failed. Check your SARVAM_API_KEY in .env.";
-      } else if (responseStatus === 400) {
-        userErrorMsg = data.detail || data.message || "Invalid audio format or parameters sent to Sarvam.";
+      } else if (responseStatus === 402 || data?.error?.code === "insufficient_quota_error") {
+        userErrorMsg = "Sarvam AI credit balance is zero (No credits available). Please recharge your Sarvam API key or update SARVAM_API_KEY in backend/.env.";
       } else if (responseStatus === 429) {
         userErrorMsg = "Sarvam API rate limit reached. Please try again in a moment.";
-      } else if (data.detail) {
+      } else if (data?.error?.message) {
+        userErrorMsg = data.error.message;
+      } else if (data?.detail) {
         userErrorMsg = data.detail;
+      } else if (data?.message) {
+        userErrorMsg = data.message;
+      } else if (responseStatus === 400) {
+        userErrorMsg = "Invalid audio format or parameters sent to Sarvam.";
       }
 
       return res.status(responseStatus).json({

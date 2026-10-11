@@ -82,17 +82,18 @@ router.post("/tts", async (req, res) => {
       data = { raw: responseText };
     }
 
-    if (!response.ok) {
-      console.error(`[Backend TTS] Sarvam API returned error status ${status}:`, responseText);
-      let errorMsg = data.detail || data.message || responseText || "Sarvam TTS error.";
-      if (status === 401) errorMsg = "Sarvam API authentication failed. Check your SARVAM_API_KEY in .env.";
+      if (!response.ok) {
+        console.error(`[Backend TTS] Sarvam API returned error status ${status}:`, responseText);
+        let errorMsg = data?.error?.message || data?.detail || data?.message || "Sarvam TTS error.";
+        if (status === 401) errorMsg = "Sarvam API authentication failed. Check your SARVAM_API_KEY in .env.";
+        if (status === 402 || data?.error?.code === "insufficient_quota_error") errorMsg = "Sarvam AI credit balance is zero (No credits available). Please recharge SARVAM_API_KEY.";
 
-      return res.status(status).json({
-        success: false,
-        error: errorMsg,
-        statusCode: status
-      });
-    }
+        return res.status(status).json({
+          success: false,
+          error: errorMsg,
+          statusCode: status
+        });
+      }
 
     // 5. Extract base64 audio array
     if (!data.audios || !data.audios[0]) {

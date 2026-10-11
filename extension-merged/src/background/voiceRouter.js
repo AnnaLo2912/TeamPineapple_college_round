@@ -229,6 +229,7 @@ export function createVoiceRouter(deps) {
       'search', 'execute search', 'submit search', 'google search', 'run search',
       'read links', 'read results', 'read top links', 'read search results', 'read result links',
       'show numbered links', 'hide numbered links',
+      'refresh numbered links', 'refresh links', 'refresh numbers', 'update numbered links',
       'blind mode', 'eyes free', 'eyes free mode', 'enable blind mode', 'start blind mode',
       'disable blind mode', 'stop blind mode', 'exit blind mode', 'turn off blind mode',
       'scroll down', 'scroll up', 'page down', 'page up',
@@ -446,6 +447,13 @@ export function createVoiceRouter(deps) {
       setMessage('Hidden link numbers.')
       return
     }
+    if (text === 'refresh numbered links' || text === 'refresh links' || text === 'refresh numbers' || text === 'update numbered links') {
+      setMessage('Command: Refresh numbered links')
+      const res = await sendToActiveTab({ action: 'SHOW_NUMBERED_LINKS' })
+      setNumbersActive(true)
+      setMessage(`Showing ${res?.count || 0} numbered links.`)
+      return
+    }
 
     if (text === 'next tab' || text === 'switch tab' || text === 'next page tab') {
       setMessage('Command: Next tab')
@@ -630,6 +638,7 @@ export function createVoiceRouter(deps) {
           'submit', 'submit form', 'send form',
           'show numbers', 'show links', 'show badges', 'numbers', 'show numbered links',
           'hide numbers', 'hide links', 'hide badges', 'hide numbered links',
+          'refresh numbered links', 'refresh links', 'refresh numbers', 'update numbered links',
           'go to search', 'cursor go to search', 'search bar', 'focus search',
           'done', 'finished', 'query done', 'search', 'execute search',
           'read links', 'read results', 'read top links',

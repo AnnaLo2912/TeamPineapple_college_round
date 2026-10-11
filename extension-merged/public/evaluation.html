@@ -230,7 +230,7 @@
           </ul>
         </div>
         <div style="display: flex; justify-content: flex-end;">
-          <button class="btn-primary" onclick="switchTab('tabTargetFitts')">Start Task 1: Target Acquisition →</button>
+          <button class="btn-primary" id="btnGoTask1">Start Task 1: Target Acquisition →</button>
         </div>
       </div>
     </div>
@@ -271,35 +271,35 @@
             <span style="font-size: 11px; font-weight: 700; color: var(--accent-cyan);">PROMPT 1</span>
             <div class="task-cmd-quote">"scroll down"</div>
             <p style="font-size: 13px; color: var(--text-secondary);">Page scrolls downward smoothly.</p>
-            <button class="btn-secondary" style="font-size: 11px; margin-top: 8px;" onclick="alert('Scroll down verified!')">Confirm / Pass</button>
+            <button class="btn-secondary" id="btnVoiceTest1" style="font-size: 11px; margin-top: 8px;">Confirm / Pass</button>
           </div>
           <div class="voice-task-card">
             <span style="font-size: 11px; font-weight: 700; color: var(--accent-cyan);">PROMPT 2</span>
             <div class="task-cmd-quote">"scroll up"</div>
             <p style="font-size: 13px; color: var(--text-secondary);">Page scrolls back up.</p>
-            <button class="btn-secondary" style="font-size: 11px; margin-top: 8px;" onclick="alert('Scroll up verified!')">Confirm / Pass</button>
+            <button class="btn-secondary" id="btnVoiceTest2" style="font-size: 11px; margin-top: 8px;">Confirm / Pass</button>
           </div>
           <div class="voice-task-card">
             <span style="font-size: 11px; font-weight: 700; color: var(--accent-cyan);">PROMPT 3</span>
             <div class="task-cmd-quote">"show numbers"</div>
             <p style="font-size: 13px; color: var(--text-secondary);">Overlays badges over clickable links.</p>
-            <button class="btn-secondary" style="font-size: 11px; margin-top: 8px;" onclick="alert('Numbered links verified!')">Confirm / Pass</button>
+            <button class="btn-secondary" id="btnVoiceTest3" style="font-size: 11px; margin-top: 8px;">Confirm / Pass</button>
           </div>
           <div class="voice-task-card">
             <span style="font-size: 11px; font-weight: 700; color: var(--accent-cyan);">PROMPT 4</span>
             <div class="task-cmd-quote">"click"</div>
             <p style="font-size: 13px; color: var(--text-secondary);">Vocal trigger clicks the armed target.</p>
-            <button class="btn-secondary" style="font-size: 11px; margin-top: 8px;" onclick="alert('Voice click verified!')">Confirm / Pass</button>
+            <button class="btn-secondary" id="btnVoiceTest4" style="font-size: 11px; margin-top: 8px;">Confirm / Pass</button>
           </div>
           <div class="voice-task-card">
             <span style="font-size: 11px; font-weight: 700; color: var(--accent-cyan);">PROMPT 5</span>
             <div class="task-cmd-quote">"hide numbers"</div>
             <p style="font-size: 13px; color: var(--text-secondary);">Hides numbered badges.</p>
-            <button class="btn-secondary" style="font-size: 11px; margin-top: 8px;" onclick="alert('Hide numbers verified!')">Confirm / Pass</button>
+            <button class="btn-secondary" id="btnVoiceTest5" style="font-size: 11px; margin-top: 8px;">Confirm / Pass</button>
           </div>
         </div>
         <div style="display: flex; justify-content: flex-end;">
-          <button class="btn-primary" onclick="switchTab('tabVoiceTyping')">Next: Voice Typing Task →</button>
+          <button class="btn-primary" id="btnGoTask3">Next: Voice Typing Task →</button>
         </div>
       </div>
     </div>
@@ -329,7 +329,7 @@
           </div>
         </div>
         <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
-          <button class="btn-primary" onclick="switchTab('tabResults')">View Full Comparison Matrix →</button>
+          <button class="btn-primary" id="btnGoResults">View Full Comparison Matrix →</button>
         </div>
       </div>
     </div>
@@ -343,7 +343,7 @@
             <p style="font-size: 14px; color: var(--text-muted);">Multimodal Handsfree Suite vs Conventional Mouse & Keyboard</p>
           </div>
           <div style="display: flex; gap: 10px;">
-            <button class="btn-secondary" onclick="window.print()">🖨️ Print / PDF</button>
+            <button class="btn-secondary" id="btnPrintPdf">🖨️ Print / PDF</button>
             <button class="btn-primary" id="btnExportCsv">📥 Export CSV</button>
           </div>
         </div>
@@ -405,111 +405,9 @@
     </div>
   </div>
 
-  <script>
-    // Tab switching
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
-      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-      const activeEl = document.getElementById(tabId);
-      if (activeEl) activeEl.style.display = 'block';
-      const activeBtn = document.querySelector(`[data-tab="${tabId}"]`);
-      if (activeBtn) activeBtn.classList.add('active');
-    }
-
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-    });
-
-    // Mode switching
-    let currentMode = 'handsfree';
-    const btnModeHandsfree = document.getElementById('btnModeHandsfree');
-    const btnModeConventional = document.getElementById('btnModeConventional');
-    const modeDisplayTitle = document.getElementById('modeDisplayTitle');
-    const modeDisplayDesc = document.getElementById('modeDisplayDesc');
-
-    btnModeHandsfree.addEventListener('click', () => {
-      currentMode = 'handsfree';
-      btnModeHandsfree.className = 'mode-btn active handsfree';
-      btnModeConventional.className = 'mode-btn';
-      modeDisplayTitle.innerText = 'Active Profile: Handsfree Multimodal';
-      modeDisplayDesc.innerText = 'Head/Hand Tracking + Intentional Dwell + Voice Click ("Click")';
-    });
-
-    btnModeConventional.addEventListener('click', () => {
-      currentMode = 'conventional';
-      btnModeConventional.className = 'mode-btn active conventional';
-      btnModeHandsfree.className = 'mode-btn';
-      modeDisplayTitle.innerText = 'Active Profile: Conventional Baseline';
-      modeDisplayDesc.innerText = 'Input: Conventional Physical Mouse Click & Hardware Keyboard';
-    });
-
-    // Preset benchmark data
-    document.getElementById('btnLoadPreset').addEventListener('click', () => {
-      switchTab('tabResults');
-    });
-
-    // Target Acquisition Arena
-    let currentTargetStep = 0;
-    const btnStartArena = document.getElementById('btnStartArena');
-    const activeTargetBtn = document.getElementById('activeTargetBtn');
-    const arenaOverlayText = document.getElementById('arenaOverlayText');
-    const arenaBox = document.getElementById('arenaBox');
-
-    const targetSizes = [
-      { w: 90, h: 44, label: 'Target 1' },
-      { w: 75, h: 40, label: 'Target 2' },
-      { w: 60, h: 36, label: 'Target 3' },
-      { w: 46, h: 32, label: 'Target 4' },
-      { w: 34, h: 30, label: 'Target 5' },
-    ];
-
-    function spawnTarget(idx) {
-      if (idx >= 5) {
-        activeTargetBtn.style.display = 'none';
-        arenaOverlayText.style.display = 'block';
-        arenaOverlayText.innerHTML = '<h3 style="color: #10b981;">✓ All 5 Targets Hit!</h3><p style="margin-top:6px; color:#cbd5e1;">Target acquisition complete for ' + currentMode + ' mode.</p>';
-        return;
-      }
-      arenaOverlayText.style.display = 'none';
-      const size = targetSizes[idx];
-      const arenaRect = arenaBox.getBoundingClientRect();
-      const x = Math.floor(60 + Math.random() * (arenaRect.width - 120));
-      const y = Math.floor(60 + Math.random() * (arenaRect.height - 120));
-      activeTargetBtn.style.left = x + 'px';
-      activeTargetBtn.style.top = y + 'px';
-      activeTargetBtn.style.width = size.w + 'px';
-      activeTargetBtn.style.height = size.h + 'px';
-      activeTargetBtn.innerText = '#' + (idx + 1);
-      activeTargetBtn.style.display = 'flex';
-    }
-
-    btnStartArena.addEventListener('click', () => {
-      currentTargetStep = 0;
-      spawnTarget(0);
-    });
-
-    activeTargetBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      currentTargetStep++;
-      spawnTarget(currentTargetStep);
-    });
-
-    // Export CSV
-    document.getElementById('btnExportCsv').addEventListener('click', () => {
-      const csv = `"Metric","Handsfree Multimodal","Conventional Mouse","Assessment"\n` +
-        `"Task Completion Time (Target Acquisition)","2.45s","1.05s","Handsfree ~2.3x mouse speed"\n` +
-        `"Selection Error Rate","1.8%","0.0%","Magnetic snap minimizes missed clicks"\n` +
-        `"Accidental Activations (Midas Touch)","0.0% (Zero)","0.0%","Intentional Dwell-to-Voice Gate eliminated 100% of unintended clicks"\n` +
-        `"Voice Command Accuracy","96.0%","N/A","High recognition across 25+ aliases"\n` +
-        `"Voice Typing Speed","34 WPM","52 WPM","Voice typing achieves 65% of keyboard speed"`;
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'handsfree_req8_evaluation_matrix.csv';
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  </script>
+  <!-- Load content script bundle for cursor overlay & head/hand tracking inside extension page -->
+  <script src="handsfree-content.js"></script>
+  <!-- Load CSP-compliant benchmark controller script -->
+  <script type="module" src="evaluation.js"></script>
 </body>
 </html>

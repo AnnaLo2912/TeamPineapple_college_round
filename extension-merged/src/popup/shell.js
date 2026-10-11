@@ -29,8 +29,9 @@ tabVoice.addEventListener('click', () => selectPanel('voice'))
 const btnBenchmark = document.getElementById('btnBenchmark')
 if (btnBenchmark) {
   btnBenchmark.addEventListener('click', () => {
-    const url = chrome.runtime.getURL('evaluation.html')
-    chrome.tabs.create({ url })
+    fetch('http://localhost:5173/', { mode: 'no-cors' })
+      .then(() => chrome.tabs.create({ url: 'http://localhost:5173/' }))
+      .catch(() => chrome.tabs.create({ url: chrome.runtime.getURL('evaluation.html') }))
   })
 }
 

@@ -62,7 +62,8 @@
         "models/*",
         "models/wasm/*",
         "icons/*",
-        "evaluation.html"
+        "evaluation.html",
+        "evaluation.js"
       ],
       "matches": ["<all_urls>"]
     }

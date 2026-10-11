@@ -68,14 +68,17 @@
       const inserted = prefixSpace + text;
       const newValue = value.slice(0, start) + inserted + value.slice(end);
 
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-      )?.set || Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-      )?.set;
+      const proto = tagName === 'textarea'
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
 
       if (nativeInputValueSetter) {
-        nativeInputValueSetter.call(target, newValue);
+        try {
+          nativeInputValueSetter.call(target, newValue);
+        } catch (_) {
+          target.value = newValue;
+        }
       } else {
         target.value = newValue;
       }
@@ -1401,8 +1404,41 @@
     // Ignore messages addressed to the head+hands module (they use `type`, not `action`).
     if (request && request.type && !request.action) return;
     switch (request.action) {
-      case 'INSERT_DICTATION':
+      case 'INSERT_DICTATION': {
+        const now = Date.now();
+        if (window.__lastDictationHandled && (now - window.__lastDictationHandled < 200)) {
+          sendResponse({ success: true });
+          break;
+        }
+        window.__lastDictationHandled = now;
         sendResponse(insertDictatedText(request.text));
+        break;
+      }
+
+      case 'BLUR_ACTIVE_FIELD':
+        if (lastFocusedElement) {
+          try { lastFocusedElement.blur(); } catch (e) {}
+          lastFocusedElement = null;
+        }
+        if (document.activeElement && typeof document.activeElement.blur === 'function') {
+          try { document.activeElement.blur(); } catch (e) {}
+        }
+        sendResponse({ success: true });
+        break;
+
+      case 'FINISH_DICTATION':
+        if (request.reason === 'search') {
+          sendResponse(executeSearchQuery());
+        } else {
+          if (lastFocusedElement) {
+            try { lastFocusedElement.blur(); } catch (e) {}
+            lastFocusedElement = null;
+          }
+          if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            try { document.activeElement.blur(); } catch (e) {}
+          }
+          sendResponse({ success: true });
+        }
         break;
 
       case 'BACKSPACE_WORD':

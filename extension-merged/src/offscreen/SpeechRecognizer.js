@@ -96,7 +96,46 @@ export class SpeechRecognizer {
         action: 'VOICE_CLICK',
         transcript: text,
       })
+      return
     }
+
+    if (this.isBackspaceCommand(text)) {
+      const now = Date.now()
+      if (now - this.lastClickTimestamp < 600) return
+      this.lastClickTimestamp = now
+      console.log(`[OffscreenSpeech] ⌫ Backspace confirmed: "${text}"`)
+      this.onCommand?.({
+        type: 'VOICE_COMMAND',
+        action: 'BACKSPACE_WORD',
+        text: 'backspace',
+      })
+      return
+    }
+
+    if (this.isClearCommand(text)) {
+      const now = Date.now()
+      if (now - this.lastClickTimestamp < 600) return
+      this.lastClickTimestamp = now
+      console.log(`[OffscreenSpeech] 🗑️ Clear text confirmed: "${text}"`)
+      this.onCommand?.({
+        type: 'VOICE_COMMAND',
+        action: 'CLEAR_TEXT',
+        text: 'clear text',
+      })
+      return
+    }
+  }
+
+  isBackspaceCommand(text) {
+    if (!text) return false
+    return /^(?:backspace|back\s*space|delete\s*word|delete\s*last\s*word|delete|delete\s*that|delete\s*text|erase\s*word|erase\s*last\s*word|erase\s*that|erase\s*text|undo\s*word|remove\s*word)(?:\s+(?:command|please|it|that|word))?$/i.test(text) ||
+      /(?:^|\s+)(?:backspace|back\s*space|delete\s*word)(?:\s+command)?$/i.test(text)
+  }
+
+  isClearCommand(text) {
+    if (!text) return false
+    return /^(?:clear\s+(?:the\s+)?(?:text|input|field|all|screen|box)|clear\s*all(?:\s*text)?|clear|delete\s*all|erase\s*all(?:\s*text)?|reset\s+(?:text|input|field))(?:\s+(?:command|please|it|that))?$/i.test(text) ||
+      /(?:^|\s+)(?:clear\s+text|clear\s+input)(?:\s+command)?$/i.test(text)
   }
 
   isClickCommand(text) {

@@ -70,12 +70,15 @@ export function openDesktopItem(query) {
   const { folders, apps, files } = getDesktopItems()
   const all = [...folders, ...apps, ...files]
 
-  // Direct match or partial match
-  const match = all.find(item =>
-    item.cleanName.toLowerCase() === lower ||
-    lower.includes(item.cleanName.toLowerCase()) ||
-    item.cleanName.toLowerCase().includes(lower)
-  )
+  // Direct match or explicit 'open <name>' match
+  const match = all.find(item => {
+    const name = item.cleanName.toLowerCase()
+    return lower === name ||
+      lower === `open ${name}` ||
+      lower === `open ${name} folder` ||
+      lower === `open ${name} app` ||
+      (lower.startsWith('open ') && lower.includes(name))
+  })
 
   if (match) {
     playEarcon('success')

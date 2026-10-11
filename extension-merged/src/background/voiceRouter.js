@@ -94,6 +94,22 @@ function isRestrictedUrl(url) {
   )
 }
 
+export function isBackspaceCommand(text) {
+  if (!text) return false
+  const clean = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  return /^(?:backspace|back\s*space|delete\s*word|delete\s*last\s*word|delete|delete\s*that|delete\s*text|erase\s*word|erase\s*last\s*word|erase\s*that|erase\s*text|undo\s*word|remove\s*word)(?:\s+(?:command|please|it|that|word))?$/i.test(clean)
+}
+
+export function isClearCommand(text) {
+  if (!text) return false
+  const clean = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  return /^(?:clear\s+(?:the\s+)?(?:text|input|field|all|screen|box)|clear\s*all(?:\s*text)?|clear|delete\s*all|erase\s*all(?:\s*text)?|reset\s+(?:text|input|field))(?:\s+(?:command|please|it|that))?$/i.test(clean)
+}
+
+export const TRAILING_BACKSPACE_REGEX = /(?:[\s,]+|^)(?:backspace|back\s*space|delete\s*word|delete\s*last\s*word|delete|erase\s*word|undo\s*word)(?:\s+(?:command|please|it|that|word))?[.!?]*$/i
+
+export const TRAILING_CLEAR_REGEX = /(?:[\s,]+|^)(?:clear\s+(?:the\s+)?(?:text|input|field|all|box)|clear\s*all(?:\s*text)?|clear|delete\s*all|erase\s*all)(?:\s+(?:command|please|it|that))?[.!?]*$/i
+
 export function createVoiceRouter(deps) {
   const { speak, stopSpeak, pauseSpeak, resumeSpeak, broadcast, switchTab, openNewTab, closeActiveTab, openUrl } = deps
 
@@ -202,6 +218,7 @@ export function createVoiceRouter(deps) {
   }
 
   function isBlindCommand(lower) {
+    if (isBackspaceCommand(lower) || isClearCommand(lower)) return true
     const blindCommands = [
       'go to search', 'cursor go to search', 'search bar', 'focus search', 'search input', 'find search',
       'done', 'finished', 'query done', 'done typing', 'search done',
@@ -212,8 +229,8 @@ export function createVoiceRouter(deps) {
       'disable blind mode', 'stop blind mode', 'exit blind mode', 'turn off blind mode',
       'scroll down', 'scroll up', 'page down', 'page up',
       'stop', 'stop reading', 'cancel',
-      'clear text', 'clear input', 'clear',
-      'backspace', 'delete word', 'back space',
+      'clear text', 'clear input', 'clear', 'clear field', 'clear all',
+      'backspace', 'delete word', 'back space', 'delete',
       'next tab', 'previous tab', 'prev tab', 'last tab', 'switch tab',
       'new tab', 'open new tab', 'close tab', 'close this tab', 'close current tab',
     ]
@@ -519,10 +536,10 @@ export function createVoiceRouter(deps) {
       const res = await sendToActiveTab({ action: 'GET_SELECTED_TEXT' })
       if (res && res.text) await speak(res.text)
       else setMessage(res?.error || 'No text selected.')
-    } else if (text === 'backspace' || text === 'delete word' || text === 'back space') {
+    } else if (isBackspaceCommand(text)) {
       setMessage('Command: Backspace word')
       await sendToActiveTab({ action: 'BACKSPACE_WORD' })
-    } else if (text === 'clear text' || text === 'clear input' || text === 'clear') {
+    } else if (isClearCommand(text)) {
       setMessage('Command: Clear text field')
       await sendToActiveTab({ action: 'CLEAR_TEXT' })
     } else if (text === 'undo' || text === 'uncheck' || text === 'deselect' || text === 'clear options') {
@@ -585,17 +602,51 @@ export function createVoiceRouter(deps) {
     if (activeMode === Mode.COMMAND) {
       await executeVoiceCommand(transcript)
     } else if (activeMode === Mode.BLIND) {
+      if (isBackspaceCommand(lower)) {
+        setMessage('Command: Backspace word')
+        await sendToActiveTab({ action: 'BACKSPACE_WORD' })
+        return
+      }
+      if (isClearCommand(lower)) {
+        setMessage('Command: Clear text field')
+        await sendToActiveTab({ action: 'CLEAR_TEXT' })
+        return
+      }
       if (isBlindCommand(lower)) {
         await executeVoiceCommand(transcript)
       } else {
         let trailingAction = null
         let payload = transcript
+        if (TRAILING_BACKSPACE_REGEX.test(payload)) {
+          const withoutCmd = payload.replace(TRAILING_BACKSPACE_REGEX, '').trim()
+          if (withoutCmd) {
+            await sendToActiveTab({ action: 'INSERT_DICTATION', text: withoutCmd })
+          }
+          await sendToActiveTab({ action: 'BACKSPACE_WORD' })
+          setMessage('Command: Backspace word')
+          return
+        }
+        if (TRAILING_CLEAR_REGEX.test(payload)) {
+          await sendToActiveTab({ action: 'CLEAR_TEXT' })
+          setMessage('Command: Clear text field')
+          return
+        }
         if (/\b(?:done|finished)$/i.test(payload)) {
           trailingAction = 'done'
           payload = payload.replace(/\b(?:done|finished)$/i, '').trim()
         } else if (/\b(?:search)$/i.test(payload)) {
           trailingAction = 'search'
           payload = payload.replace(/\b(?:search)$/i, '').trim()
+        }
+        if (isBackspaceCommand(payload)) {
+          await sendToActiveTab({ action: 'BACKSPACE_WORD' })
+          setMessage('Command: Backspace word')
+          return
+        }
+        if (isClearCommand(payload)) {
+          await sendToActiveTab({ action: 'CLEAR_TEXT' })
+          setMessage('Command: Clear text field')
+          return
         }
         if (payload.length > 0) {
           await sendToActiveTab({ action: 'INSERT_DICTATION', text: payload })
@@ -618,6 +669,19 @@ export function createVoiceRouter(deps) {
         return
       }
 
+      // Seamless voice editing within Dictation Mode (keep field focused & stay in dictation mode)
+      if (isBackspaceCommand(lower)) {
+        setMessage('Command: Backspace word')
+        await sendToActiveTab({ action: 'BACKSPACE_WORD' })
+        return
+      }
+
+      if (isClearCommand(lower)) {
+        setMessage('Command: Clear text field')
+        await sendToActiveTab({ action: 'CLEAR_TEXT' })
+        return
+      }
+
       const isActionCommand =
         [
           'click', 'clic', 'clik', 'click it', 'click this', 'click that', 'click here',
@@ -627,8 +691,6 @@ export function createVoiceRouter(deps) {
           'scroll down', 'scroll up', 'page down', 'page up',
           'pause', 'pause reading', 'resume', 'resume reading',
           'stop', 'stop reading', 'cancel',
-          'backspace', 'back space', 'delete word',
-          'clear text', 'clear input', 'clear',
           'undo', 'uncheck', 'deselect', 'clear options',
           'submit', 'submit form', 'send form',
           'show numbers', 'show links', 'show badges', 'numbers', 'show numbered links',
@@ -652,6 +714,23 @@ export function createVoiceRouter(deps) {
 
       let trailingAction = null
       let payload = dictationPayload
+
+      // Handle trailing backspace or clear command spoken alongside dictated text
+      if (TRAILING_BACKSPACE_REGEX.test(payload)) {
+        const withoutCmd = payload.replace(TRAILING_BACKSPACE_REGEX, '').trim()
+        if (withoutCmd) {
+          await sendToActiveTab({ action: 'INSERT_DICTATION', text: withoutCmd })
+        }
+        await sendToActiveTab({ action: 'BACKSPACE_WORD' })
+        setMessage('Command: Backspace word')
+        return
+      }
+
+      if (TRAILING_CLEAR_REGEX.test(payload)) {
+        await sendToActiveTab({ action: 'CLEAR_TEXT' })
+        setMessage('Command: Clear text field')
+        return
+      }
       if (/\b(?:done|finished|done typing)$/i.test(payload)) {
         trailingAction = 'done'
         payload = payload.replace(/\b(?:done|finished|done typing)$/i, '').trim()
@@ -673,6 +752,18 @@ export function createVoiceRouter(deps) {
           await readNextSection()
           return
         }
+      }
+
+      if (isBackspaceCommand(payload)) {
+        await sendToActiveTab({ action: 'BACKSPACE_WORD' })
+        setMessage('Command: Backspace word')
+        return
+      }
+
+      if (isClearCommand(payload)) {
+        await sendToActiveTab({ action: 'CLEAR_TEXT' })
+        setMessage('Command: Clear text field')
+        return
       }
 
       if (payload.length > 0) {

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url'
 import { executeCommand } from './systemActions.js'
 import { announceActiveWindow, announceOpenWindows, dictateStartupScreen } from './screenDictator.js'
 import { dictateFolder } from './fileNavigator.js'
-import { speak, playEarcon, isTtsSpeaking } from './ttsEngine.js'
+import { speak, playEarcon, isTtsSpeaking, stopSpeaking, getLastSpokenText } from './ttsEngine.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -14,8 +14,7 @@ let micProcess = null
 
 export function cleanupExistingMicProcesses() {
   try {
-    const cmd = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*listenMic.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-    execSync(`powershell.exe -NoProfile -Command "${cmd}"`, { stdio: 'ignore' })
+    execSync(`powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"CommandLine LIKE '%listenMic.ps1%'\\" | ForEach-Object { Stop-Process -Id \\$_.ProcessId -Force -ErrorAction SilentlyContinue }"`, { stdio: 'ignore' })
   } catch {}
 }
 
@@ -24,17 +23,34 @@ export function cleanupExistingMicProcesses() {
  * Routes user speech and commands to the appropriate OS action or Screen Dictator.
  */
 
-export async function processVoiceInput(input) {
+let lastCommandText = ''
+let lastCommandTime = 0
+
+export async function processVoiceInput(input, confidence = 100) {
   if (!input || typeof input !== 'string') return
   const text = input.trim()
   if (!text) return
 
-  // Prevent self-triggering: Ignore audio picked up from laptop speakers while assistant is speaking
+  // Prevent self-triggering: If assistant was speaking, check if it's echo or intentional user interruption
   if (isTtsSpeaking()) {
-    return
+    const lastSpoken = (getLastSpokenText() || '').toLowerCase()
+    if (lastSpoken.includes(text.toLowerCase()) && text.split(/\s+/).length === 1) {
+      // Ignored single-word speaker feedback
+      return
+    }
+    // Genuine user command during assistant announcement -> interrupt speech immediately!
+    stopSpeaking()
   }
 
-  console.log(`\n🎤 [Tier 1 Voice Command Received]: "${text}"`)
+  // Prevent rapid duplicate commands within 1.5 seconds
+  const now = Date.now()
+  if (text.toLowerCase() === lastCommandText.toLowerCase() && now - lastCommandTime < 1500) {
+    return
+  }
+  lastCommandText = text
+  lastCommandTime = now
+
+  console.log(`\n🎤 [Tier 1 Voice Command Received]: "${text}" (${confidence}% match)`)
 
   // Check Screen Dictator commands (Full Screen & Desktop Dictation)
   const lower = text.toLowerCase()
@@ -131,9 +147,11 @@ export function startMicrophoneListener() {
       if (trimmed === 'LISTENER_READY') {
         console.log('🎙️  [Live Mic] Windows Microphone listening actively in background! You can speak commands from any window/desktop.')
       } else if (trimmed.startsWith('RECOGNIZED:')) {
-        const recognizedText = trimmed.replace('RECOGNIZED:', '').trim()
+        const payload = trimmed.replace('RECOGNIZED:', '').trim()
+        const [recognizedText, confStr] = payload.split('|')
+        const confidence = confStr ? Math.round(parseFloat(confStr) * 100) : 100
         if (recognizedText) {
-          void processVoiceInput(recognizedText)
+          void processVoiceInput(recognizedText, confidence)
         }
       } else if (trimmed.startsWith('LISTENER_ERROR:')) {
         console.warn(`[Live Mic] Audio Note: ${trimmed}`)

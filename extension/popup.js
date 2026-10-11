@@ -511,7 +511,23 @@ document.addEventListener('DOMContentLoaded', () => {
   /**
    * Check if transcript is an Eyes-Free Blind Navigation command
    */
+  function isBackspaceCommand(text) {
+    if (!text) return false;
+    const clean = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    return /^(?:backspace|back\s*space|delete\s*word|delete\s*last\s*word|delete|delete\s*that|delete\s*text|erase\s*word|erase\s*last\s*word|erase\s*that|erase\s*text|undo\s*word|remove\s*word)(?:\s+(?:command|please|it|that|word))?$/i.test(clean);
+  }
+
+  function isClearCommand(text) {
+    if (!text) return false;
+    const clean = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    return /^(?:clear\s+(?:the\s+)?(?:text|input|field|all|screen|box)|clear\s*all(?:\s*text)?|clear|delete\s*all|erase\s*all(?:\s*text)?|reset\s+(?:text|input|field))(?:\s+(?:command|please|it|that))?$/i.test(clean);
+  }
+
+  const TRAILING_BACKSPACE_REGEX = /(?:[\s,]+|^)(?:backspace|back\s*space|delete\s*word|delete\s*last\s*word|delete|erase\s*word|undo\s*word)(?:\s+(?:command|please|it|that|word))?[.!?]*$/i;
+  const TRAILING_CLEAR_REGEX = /(?:[\s,]+|^)(?:clear\s+(?:the\s+)?(?:text|input|field|all|box)|clear\s*all(?:\s*text)?|clear|delete\s*all|erase\s*all)(?:\s+(?:command|please|it|that))?[.!?]*$/i;
+
   function isBlindCommand(lower, transcript) {
+    if (isBackspaceCommand(lower) || isClearCommand(lower)) return true;
     const blindCommands = [
       'go to search', 'cursor go to search', 'search bar', 'focus search', 'search input', 'find search',
       'done', 'finished', 'query done', 'done typing', 'search done',
@@ -523,8 +539,8 @@ document.addEventListener('DOMContentLoaded', () => {
       'disable blind mode', 'stop blind mode', 'exit blind mode', 'turn off blind mode',
       'scroll down', 'scroll up', 'page down', 'page up',
       'stop', 'stop reading', 'cancel',
-      'clear text', 'clear input', 'clear',
-      'backspace', 'delete word', 'back space'
+      'clear text', 'clear input', 'clear', 'clear field', 'clear all',
+      'backspace', 'delete word', 'back space', 'delete'
     ];
 
     if (blindCommands.includes(lower)) return true;
@@ -712,7 +728,13 @@ document.addEventListener('DOMContentLoaded', () => {
         executeVoiceCommand(transcript);
       } else if (activeMode === Mode.BLIND) {
         // Blind Mode Voice Routing
-        if (isBlindCommand(lower, transcript)) {
+        if (isBackspaceCommand(lower)) {
+          setUIState(State.COMPLETED, 'Command: Backspace word');
+          sendToActiveTab({ action: 'BACKSPACE_WORD' });
+        } else if (isClearCommand(lower)) {
+          setUIState(State.COMPLETED, 'Command: Clear text field');
+          sendToActiveTab({ action: 'CLEAR_TEXT' });
+        } else if (isBlindCommand(lower, transcript)) {
           setUIState(State.COMPLETED, `Blind Command: "${transcript}"`);
           executeVoiceCommand(transcript);
         } else {
@@ -724,12 +746,38 @@ document.addEventListener('DOMContentLoaded', () => {
           let trailingAction = null;
           let dictationPayload = trimmed;
 
+          if (TRAILING_BACKSPACE_REGEX.test(dictationPayload)) {
+            const withoutCmd = dictationPayload.replace(TRAILING_BACKSPACE_REGEX, '').trim();
+            if (withoutCmd) {
+              await sendToActiveTab({ action: 'INSERT_DICTATION', text: withoutCmd });
+            }
+            await sendToActiveTab({ action: 'BACKSPACE_WORD' });
+            setUIState(State.COMPLETED, 'Command: Backspace word');
+            return;
+          }
+          if (TRAILING_CLEAR_REGEX.test(dictationPayload)) {
+            await sendToActiveTab({ action: 'CLEAR_TEXT' });
+            setUIState(State.COMPLETED, 'Command: Clear text field');
+            return;
+          }
+
           if (trailingSearchRegex.test(trimmed)) {
             trailingAction = 'search';
             dictationPayload = trimmed.replace(trailingSearchRegex, '').replace(/[\s,]+$/, '').trim();
           } else if (trailingDoneRegex.test(trimmed)) {
             trailingAction = 'done';
             dictationPayload = trimmed.replace(trailingDoneRegex, '').replace(/[\s,]+$/, '').trim();
+          }
+
+          if (isBackspaceCommand(dictationPayload)) {
+            setUIState(State.COMPLETED, 'Command: Backspace word');
+            await sendToActiveTab({ action: 'BACKSPACE_WORD' });
+            return;
+          }
+          if (isClearCommand(dictationPayload)) {
+            setUIState(State.COMPLETED, 'Command: Clear text field');
+            await sendToActiveTab({ action: 'CLEAR_TEXT' });
+            return;
           }
 
           if (dictationPayload.length > 0) {
@@ -748,6 +796,17 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
       } else if (activeMode === Mode.DICTATION || activeMode === Mode.READING) {
+        if (isBackspaceCommand(lower)) {
+          setUIState(State.COMPLETED, 'Command: Backspace word');
+          sendToActiveTab({ action: 'BACKSPACE_WORD' });
+          return;
+        }
+        if (isClearCommand(lower)) {
+          setUIState(State.COMPLETED, 'Command: Clear text field');
+          sendToActiveTab({ action: 'CLEAR_TEXT' });
+          return;
+        }
+
         // Voice action commands during dictation & reading
         const isActionCommand = [
           'previous', 'prev', 'read previous', 'previous section',
@@ -755,8 +814,6 @@ document.addEventListener('DOMContentLoaded', () => {
           'scroll down', 'scroll up', 'page down', 'page up',
           'pause', 'pause reading', 'resume', 'resume reading',
           'stop', 'stop reading', 'cancel',
-          'backspace', 'back space', 'delete word',
-          'clear text', 'clear input', 'clear',
           'undo', 'uncheck', 'deselect', 'clear options',
           'submit', 'submit form', 'send form',
           'show numbers', 'show links', 'show badges', 'numbers',
@@ -776,6 +833,22 @@ document.addEventListener('DOMContentLoaded', () => {
               }
             }, 600);
           }
+          return;
+        }
+
+        // Trailing backspace or clear in dictation
+        if (TRAILING_BACKSPACE_REGEX.test(dictationPayload)) {
+          const withoutCmd = dictationPayload.replace(TRAILING_BACKSPACE_REGEX, '').trim();
+          if (withoutCmd) {
+            await sendToActiveTab({ action: 'INSERT_DICTATION', text: withoutCmd });
+          }
+          await sendToActiveTab({ action: 'BACKSPACE_WORD' });
+          setUIState(State.COMPLETED, 'Command: Backspace word');
+          return;
+        }
+        if (TRAILING_CLEAR_REGEX.test(dictationPayload)) {
+          await sendToActiveTab({ action: 'CLEAR_TEXT' });
+          setUIState(State.COMPLETED, 'Command: Clear text field');
           return;
         }
 
@@ -812,6 +885,17 @@ document.addEventListener('DOMContentLoaded', () => {
               return;
             }
           }
+        }
+
+        if (isBackspaceCommand(dictationPayload)) {
+          setUIState(State.COMPLETED, 'Command: Backspace word');
+          await sendToActiveTab({ action: 'BACKSPACE_WORD' });
+          return;
+        }
+        if (isClearCommand(dictationPayload)) {
+          setUIState(State.COMPLETED, 'Command: Clear text field');
+          await sendToActiveTab({ action: 'CLEAR_TEXT' });
+          return;
         }
 
         // Fallback: Text field dictation insertion
@@ -1636,10 +1720,10 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (text === 'read selected' || text === 'read selection') {
       messageText.textContent = 'Command: Read selected text';
       readSelectedText();
-    } else if (text === 'backspace' || text === 'delete word' || text === 'back space') {
+    } else if (isBackspaceCommand(text)) {
       messageText.textContent = 'Command: Backspace word';
       sendToActiveTab({ action: 'BACKSPACE_WORD' });
-    } else if (text === 'clear text' || text === 'clear input' || text === 'clear') {
+    } else if (isClearCommand(text)) {
       messageText.textContent = 'Command: Clear text field';
       sendToActiveTab({ action: 'CLEAR_TEXT' });
     } else if (text === 'undo' || text === 'uncheck' || text === 'deselect' || text === 'clear options') {

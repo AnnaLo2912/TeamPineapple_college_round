@@ -15,7 +15,7 @@ export async function executeCommand(rawCommand) {
   console.log(`[Tier 1 System Action] Executing: "${cmd}"`)
 
   // Click Action (Trigger mouse click at current cursor position)
-  if (cmd === 'click' || cmd === 'click it' || cmd === 'click link' || cmd === 'tap' || cmd === 'press') {
+  if (cmd === 'click' || cmd === 'click it' || cmd === 'click link' || cmd === 'click here') {
     playEarcon('success')
     const ps = `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class M { [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint c, uint e); public static void C() { mouse_event(2, 0, 0, 0, 0); mouse_event(4, 0, 0, 0, 0); } }'; [M]::C()`
     exec(`powershell -NoProfile -Command "${ps}"`)
@@ -26,8 +26,10 @@ export async function executeCommand(rawCommand) {
   if (
     cmd.includes('file explorer') ||
     cmd.includes('open files') ||
-    cmd.includes('explorer') ||
-    cmd === 'files'
+    cmd.includes('open explorer') ||
+    cmd === 'explorer' ||
+    cmd === 'files' ||
+    cmd === 'file explorer'
   ) {
     playEarcon('success')
     speak('Opening File Explorer')
@@ -36,10 +38,14 @@ export async function executeCommand(rawCommand) {
   }
 
   if (
-    cmd.includes('google') ||
-    cmd.includes('browser') ||
-    cmd.includes('chrome') ||
-    cmd.includes('internet')
+    cmd.includes('google search') ||
+    cmd.includes('open google') ||
+    cmd.includes('google chrome') ||
+    cmd.includes('open browser') ||
+    cmd.includes('open internet') ||
+    cmd === 'google' ||
+    cmd === 'chrome' ||
+    cmd === 'browser'
   ) {
     playEarcon('success')
     speak('Opening Google Search in browser')
@@ -50,7 +56,9 @@ export async function executeCommand(rawCommand) {
   if (
     cmd.includes('notepad') ||
     cmd.includes('text editor') ||
-    cmd.includes('notes')
+    cmd.includes('open notes') ||
+    cmd === 'notepad' ||
+    cmd === 'notes'
   ) {
     playEarcon('success')
     speak('Opening Notepad')
@@ -58,7 +66,7 @@ export async function executeCommand(rawCommand) {
     return true
   }
 
-  if (cmd.includes('calculator') || cmd === 'calc') {
+  if (cmd.includes('calculator') || cmd === 'open calculator' || cmd === 'calc') {
     playEarcon('success')
     speak('Opening Calculator')
     exec('calc.exe')

@@ -26,6 +26,15 @@ function selectPanel(name) {
 tabHandsfree.addEventListener('click', () => selectPanel('handsfree'))
 tabVoice.addEventListener('click', () => selectPanel('voice'))
 
+const btnBenchmark = document.getElementById('btnBenchmark')
+if (btnBenchmark) {
+  btnBenchmark.addEventListener('click', () => {
+    fetch('http://localhost:5173/', { mode: 'no-cors' })
+      .then(() => chrome.tabs.create({ url: 'http://localhost:5173/' }))
+      .catch(() => chrome.tabs.create({ url: chrome.runtime.getURL('evaluation.html') }))
+  })
+}
+
 function renderState(state) {
   if (!state) return
   if (typeof state.headhands === 'boolean') handsfreeToggle.checked = state.headhands

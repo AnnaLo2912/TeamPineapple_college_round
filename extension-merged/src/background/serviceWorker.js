@@ -549,8 +549,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
-  if (message.type === 'CAMERA_PERMISSION_REQUIRED') {
-    debugLog('background', 'camera permission required -> opening permission tab')
+  if (message.type === 'VOICE_CLICK' || message.action === 'VOICE_CLICK') {
+    debugLog('background', 'voice click received -> forwarding to active tab', message)
+    forwardToActiveTab({
+      type: 'VOICE_CLICK',
+      action: 'VOICE_CLICK',
+      transcript: message.transcript,
+    })
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'START_FIELD_DICTATION') {
+    debugLog('background', 'auto starting field dictation')
+    voiceRouter.setMode('dictation')
+    if (!voiceListening) {
+      void startVoiceListening()
+    }
+    sendResponse({ success: true, mode: 'dictation' })
+    return true
+  }
+
+  if (message.type === 'STOP_FIELD_DICTATION') {
+    debugLog('background', 'stopping field dictation -> return to command mode')
+    voiceRouter.setMode('command')
+    sendResponse({ success: true, mode: 'command' })
+    return true
+  }
+
+  if (message.type === 'CAMERA_PERMISSION_REQUIRED' || message.type === 'MIC_PERMISSION_REQUIRED') {
+    debugLog('background', 'permission required -> opening permission tab')
     openPermissionTabSingle()
     sendResponse({ success: true })
     return true

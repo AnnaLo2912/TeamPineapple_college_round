@@ -333,6 +333,33 @@ export function createVoiceRouter(deps) {
       text = text.replace(new RegExp(`\\b${w}\\b`, 'g'), d)
     }
 
+    // Multimodal Voice Click: Click link/target focused or dwelled by Head or Hand cursor
+    if (
+      text === 'click' ||
+      text === 'clic' ||
+      text === 'clik' ||
+      text === 'click it' ||
+      text === 'click this' ||
+      text === 'click that' ||
+      text === 'click link' ||
+      text === 'click button' ||
+      text === 'click here' ||
+      text === 'press' ||
+      text === 'tap' ||
+      text === 'select' ||
+      text.startsWith('click ') ||
+      text.endsWith(' click')
+    ) {
+      setMessage('Command: Click')
+      const res = await sendToActiveTab({ action: 'VOICE_CLICK', type: 'VOICE_CLICK' })
+      if (res && res.success) {
+        setMessage(`Clicked: ${res.label || 'target'}`)
+      } else {
+        setMessage(res?.message || res?.error || 'Click executed.')
+      }
+      return
+    }
+
     if (text === 'blind mode' || text === 'eyes free' || text === 'eyes free mode' || text === 'enable blind mode' || text === 'start blind mode') {
       setMessage('Command: Enable Eyes-Free Blind Mode')
       await updateBlindMode(true)
@@ -504,9 +531,25 @@ export function createVoiceRouter(deps) {
     } else if (text === 'submit' || text === 'submit form' || text === 'send form') {
       setMessage('Command: Submit form')
       await sendToActiveTab({ action: 'SUBMIT_FORM' })
-    } else if (text === 'dictation' || text === 'start dictation' || text === 'dictation mode') {
+    } else if (
+      text === 'dictate' ||
+      text === 'dicatate' ||
+      text === 'start dictation' ||
+      text === 'dictate text' ||
+      text === 'type' ||
+      text === 'start typing' ||
+      text === 'dictation' ||
+      text === 'dictation mode'
+    ) {
+      setMessage('Command: Start Dictation')
+      const res = await sendToActiveTab({ action: 'START_DICTATION_COMMAND', type: 'START_DICTATION_COMMAND' })
       setMode(Mode.DICTATION)
-      setMessage('Switched to Dictation Mode.')
+      if (res && res.success) {
+        setMessage('Dictation active. Speak what you want to write.')
+      } else {
+        setMessage('Switched to Dictation Mode. Speak what you want to write.')
+      }
+      return
     } else if (text === 'command' || text === 'command mode' || text === 'stop dictation') {
       setMode(Mode.COMMAND)
       setMessage('Switched to Command Mode.')
@@ -561,8 +604,24 @@ export function createVoiceRouter(deps) {
         else if (trailingAction === 'search') await executeVoiceCommand('search')
       }
     } else if (activeMode === Mode.DICTATION || activeMode === Mode.READING) {
+      if (['done', 'finished', 'done typing', 'insertion complete', 'complete'].includes(lower)) {
+        await sendToActiveTab({ action: 'FINISH_DICTATION', reason: 'done' })
+        setMode(Mode.COMMAND)
+        setMessage('✓ Insertion complete.')
+        return
+      }
+
+      if (['search', 'execute search', 'submit search', 'run search', 'google search'].includes(lower)) {
+        await sendToActiveTab({ action: 'FINISH_DICTATION', reason: 'search' })
+        setMode(Mode.COMMAND)
+        setMessage('Command: Execute search')
+        return
+      }
+
       const isActionCommand =
         [
+          'click', 'clic', 'clik', 'click it', 'click this', 'click that', 'click here',
+          'click link', 'click button', 'press', 'tap',
           'previous', 'prev', 'read previous', 'previous section',
           'repeat', 'repeat that', 'repeat section',
           'scroll down', 'scroll up', 'page down', 'page up',
@@ -575,25 +634,39 @@ export function createVoiceRouter(deps) {
           'show numbers', 'show links', 'show badges', 'numbers', 'show numbered links',
           'hide numbers', 'hide links', 'hide badges', 'hide numbered links',
           'go to search', 'cursor go to search', 'search bar', 'focus search',
-          'done', 'finished', 'query done', 'search', 'execute search',
           'read links', 'read results', 'read top links',
           'blind mode', 'eyes free', 'enable blind mode', 'disable blind mode',
           'next tab', 'previous tab', 'prev tab', 'last tab', 'switch tab',
           'new tab', 'open new tab', 'close tab', 'close this tab', 'close current tab',
-        ].includes(lower) || extractSpokenNumber(transcript, true) !== null
+        ].includes(lower) ||
+        lower.startsWith('click ') ||
+        lower.endsWith(' click') ||
+        extractSpokenNumber(transcript, true) !== null
 
       if (isActionCommand) {
+        await sendToActiveTab({ action: 'BLUR_ACTIVE_FIELD' })
+        setMode(Mode.COMMAND)
         await executeVoiceCommand(transcript)
         return
       }
 
-      const isOptionSelection =
-        /^(select|choose|pick|check)\b/i.test(dictationPayload) || /^(select|choose|pick|check)\b/i.test(lower)
+      let trailingAction = null
+      let payload = dictationPayload
+      if (/\b(?:done|finished|done typing)$/i.test(payload)) {
+        trailingAction = 'done'
+        payload = payload.replace(/\b(?:done|finished|done typing)$/i, '').trim()
+      } else if (/\b(?:search|execute search)$/i.test(payload)) {
+        trailingAction = 'search'
+        payload = payload.replace(/\b(?:search|execute search)$/i, '').trim()
+      }
 
-      if (isOptionSelection || (dictationPayload && dictationPayload.length > 0)) {
+      const isOptionSelection =
+        /^(select|choose|pick|check)\b/i.test(payload) || /^(select|choose|pick|check)\b/i.test(lower)
+
+      if (isOptionSelection || (payload && payload.length > 0 && !trailingAction)) {
         const selectRes = await sendToActiveTab({
           action: 'SELECT_OPTION',
-          text: dictationPayload,
+          text: payload,
           sectionIndex: currentReadingIndex,
         })
         if (selectRes && selectRes.success && hasNextTrigger) {
@@ -602,8 +675,15 @@ export function createVoiceRouter(deps) {
         }
       }
 
-      if (dictationPayload.length > 0) {
-        await sendToActiveTab({ action: 'INSERT_DICTATION', text: dictationPayload })
+      if (payload.length > 0) {
+        await sendToActiveTab({ action: 'INSERT_DICTATION', text: payload })
+      }
+
+      if (trailingAction) {
+        await sendToActiveTab({ action: 'FINISH_DICTATION', reason: trailingAction })
+        setMode(Mode.COMMAND)
+        setMessage(trailingAction === 'search' ? 'Command: Execute search' : '✓ Insertion complete.')
+        return
       }
 
       if (hasNextTrigger) await readNextSection()

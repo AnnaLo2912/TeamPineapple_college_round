@@ -18,6 +18,7 @@ export class CursorOverlay {
     this.dwellStartTime = 0
     this.onDwellCompleteCallback = null
     this.dwellTime = DWELL_TIME
+    this.isArmed = false
 
     this.createElements()
   }
@@ -232,7 +233,13 @@ export class CursorOverlay {
 
     if (!this.cursorElement || !this.svgElement) return
 
-    const cursorColor = isOverTarget ? '#ff6b6b' : this.mode === 'face' ? '#4ecdc4' : '#ffe66d'
+    const cursorColor = this.isArmed
+      ? '#22c55e'
+      : isOverTarget
+      ? '#ff6b6b'
+      : this.mode === 'face'
+      ? '#4ecdc4'
+      : '#ffe66d'
 
     const gradient = this.svgElement.querySelector('#cursorGradient')
     if (gradient) {
@@ -249,22 +256,66 @@ export class CursorOverlay {
 
     const hoverRing = this.svgElement.querySelector('#hoverRing')
     if (hoverRing) {
-      hoverRing.setAttribute('display', isOverTarget ? 'block' : 'none')
+      hoverRing.setAttribute('display', isOverTarget || this.isArmed ? 'block' : 'none')
       hoverRing.setAttribute('stroke', cursorColor)
     }
 
     const dwellCircle = this.dwellRingElement?.querySelector('circle')
-    if (dwellCircle) {
+    if (dwellCircle && !this.isArmed) {
       dwellCircle.setAttribute('stroke', '#4ecdc4')
     }
 
     if (target) {
       this.labelElement.style.display = 'block'
-      this.labelElement.textContent = `${target.tagName.toUpperCase()}${target.type ? `[${target.type}]` : ''}${target.isLink ? ' → Link' : ''}`
+      const armedHint = this.isArmed ? ' [Say "Click"]' : ''
+      this.labelElement.textContent = `${target.tagName.toUpperCase()}${target.type ? `[${target.type}]` : ''}${target.isLink ? ' → Link' : ''}${armedHint}`
       this.labelElement.style.left = `${target.center.x - this.currentPosition.x}px`
       this.labelElement.style.top = `${target.center.y - this.currentPosition.y}px`
-    } else {
+      if (this.isArmed) {
+        this.labelElement.style.border = '1px solid #22c55e'
+        this.labelElement.style.color = '#86efac'
+      } else {
+        this.labelElement.style.border = '1px solid rgba(255,255,255,0.1)'
+        this.labelElement.style.color = 'white'
+      }
+    } else if (!this.isArmed) {
       this.labelElement.style.display = 'none'
+    }
+  }
+
+  setArmed(isArmed) {
+    this.isArmed = isArmed
+    if (!this.cursorElement || !this.svgElement) return
+
+    const cursorColor = isArmed
+      ? '#22c55e'
+      : this.targetElement
+      ? '#ff6b6b'
+      : this.mode === 'face'
+      ? '#4ecdc4'
+      : '#ffe66d'
+
+    const gradient = this.svgElement.querySelector('#cursorGradient')
+    if (gradient) {
+      const stops = gradient.querySelectorAll('stop')
+      stops.forEach((s) => s.setAttribute('stop-color', cursorColor))
+    }
+
+    const mainCircle = this.svgElement.querySelector('circle')
+    if (mainCircle) {
+      mainCircle.setAttribute('stroke', cursorColor)
+    }
+
+    const dwellCircle = this.dwellRingElement?.querySelector('circle')
+    if (dwellCircle) {
+      dwellCircle.setAttribute('stroke', isArmed ? '#22c55e' : '#4ecdc4')
+      if (isArmed) {
+        const circumference = (DWELL_RING_SIZE - 6) * Math.PI * 2
+        dwellCircle.setAttribute('stroke-dasharray', `${circumference} ${circumference}`)
+        if (this.dwellRingElement) this.dwellRingElement.style.display = 'block'
+      } else if (!this.isDwelling) {
+        if (this.dwellRingElement) this.dwellRingElement.style.display = 'none'
+      }
     }
   }
 

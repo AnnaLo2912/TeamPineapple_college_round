@@ -38,6 +38,7 @@ let calibrationOverlay = null
 let tabDock = null
 let lastClickTime = 0
 let currentDwellTarget = null
+let armedTarget = null
 let lastRawPoint = null
 let lastMappedPoint = null
 let lastSnappedPoint = null
@@ -77,6 +78,132 @@ let renderFrame = null
 
 let calibrationTargetIndex = -1
 let calibrationDwellStart = 0
+
+let activeDictationField = null
+let dictationFieldLeaveTime = 0
+
+function isEditableTextInput(el) {
+  if (!el) return false
+  const tagName = el.tagName ? el.tagName.toLowerCase() : ''
+  if (tagName === 'textarea') return true
+  if (tagName === 'input') {
+    const type = (el.type || 'text').toLowerCase()
+    const textTypes = ['text', 'search', 'email', 'url', 'tel', 'password', 'number', '']
+    return textTypes.includes(type)
+  }
+  if (el.isContentEditable || el.getAttribute('contenteditable') === 'true' || el.getAttribute('role') === 'textbox') {
+    return true
+  }
+  return false
+}
+
+function executeSearchOnElement(el) {
+  if (!el) return
+  try {
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }))
+    el.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }))
+    el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }))
+  } catch (_) {}
+
+  const form = el.closest('form')
+  if (form) {
+    const submitBtn = form.querySelector('button[type="submit"], input[type="submit"], [aria-label*="Search" i], button')
+    if (submitBtn && submitBtn !== el) {
+      try { submitBtn.click() } catch (_) {}
+    } else {
+      try {
+        if (typeof form.requestSubmit === 'function') form.requestSubmit()
+        else form.submit()
+      } catch (_) {}
+    }
+  }
+}
+
+function startFieldDictation(element) {
+  if (!element || !isEditableTextInput(element)) return
+  cancelDwell()
+  disarmTarget()
+  activeDictationField = element
+  dictationFieldLeaveTime = 0
+  try { element.focus?.() } catch (_) {}
+
+  // Automatically start dictation in background voice engine
+  chrome.runtime.sendMessage({ type: 'START_FIELD_DICTATION' }, () => void chrome.runtime.lastError)
+  cursorOverlay?.showStatus('✍️ Dictating... Speak to write (say "Done" or "Search")')
+
+  try {
+    element.style.transition = 'box-shadow 0.2s ease, outline 0.2s ease'
+    element.style.outline = '2px solid #10b981'
+    element.style.boxShadow = '0 0 12px rgba(16, 185, 129, 0.4)'
+  } catch (_) {}
+}
+
+function stopFieldDictation(reason = 'cursor_moved') {
+  if (!activeDictationField) return
+  const el = activeDictationField
+  activeDictationField = null
+  dictationFieldLeaveTime = 0
+
+  if (reason === 'search') {
+    executeSearchOnElement(el)
+    cursorOverlay?.showStatus('🔍 Executing search...')
+  } else if (reason === 'done') {
+    cursorOverlay?.showStatus('✓ Insertion complete!')
+  } else {
+    cursorOverlay?.showStatus('✓ Focus moved — back to command mode')
+  }
+
+  // Blur field - focus moves away
+  try {
+    el.blur?.()
+    el.style.outline = ''
+    el.style.boxShadow = ''
+  } catch (_) {}
+
+  // Switch voice engine back to command mode
+  chrome.runtime.sendMessage({ type: 'STOP_FIELD_DICTATION' }, () => void chrome.runtime.lastError)
+  setTimeout(() => cursorOverlay?.hideStatus(), 1600)
+}
+
+function insertTextIntoElement(target, text) {
+  if (!target || !text) return
+  const tagName = target.tagName ? target.tagName.toLowerCase() : ''
+  if (tagName === 'input' || tagName === 'textarea') {
+    const start = target.selectionStart !== null ? target.selectionStart : target.value.length
+    const end = target.selectionEnd !== null ? target.selectionEnd : target.value.length
+    const value = target.value || ''
+    let prefixSpace = ''
+    if (start > 0 && !/\s$/.test(value.slice(0, start)) && !/^\s/.test(text)) {
+      prefixSpace = ' '
+    }
+    const inserted = prefixSpace + text
+    const newValue = value.slice(0, start) + inserted + value.slice(end)
+
+    const proto = tagName === 'textarea'
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype
+    const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set
+    if (nativeSetter) {
+      try {
+        nativeSetter.call(target, newValue)
+      } catch (_) {
+        target.value = newValue
+      }
+    } else {
+      target.value = newValue
+    }
+
+    const newPos = start + inserted.length
+    if (typeof target.setSelectionRange === 'function') {
+      try { target.setSelectionRange(newPos, newPos) } catch (_) {}
+    }
+    target.dispatchEvent(new Event('input', { bubbles: true }))
+    target.dispatchEvent(new Event('change', { bubbles: true }))
+  } else if (target.isContentEditable || target.getAttribute('contenteditable') === 'true') {
+    target.focus?.()
+    document.execCommand('insertText', false, text)
+  }
+}
 
 function initOverlay() {
   cursorOverlay = new CursorOverlay(config.magneticRadius, config.snapStrength)
@@ -227,6 +354,86 @@ function setupMessageHandlers() {
       sendStatusUpdate()
     }
   })
+
+  messagingBridge.onMessage('VOICE_CLICK', () => {
+    return handleVoiceClick()
+  })
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.action === 'VOICE_CLICK' || message?.type === 'VOICE_CLICK') {
+      const res = handleVoiceClick()
+      sendResponse(res || { success: true })
+      return true
+    }
+    if (message?.action === 'BLUR_ACTIVE_FIELD' || message?.type === 'BLUR_ACTIVE_FIELD') {
+      stopFieldDictation('action_blur')
+      sendResponse({ success: true })
+      return true
+    }
+    if (message?.action === 'FINISH_DICTATION' || message?.type === 'FINISH_DICTATION') {
+      stopFieldDictation(message.reason || 'done')
+      sendResponse({ success: true })
+      return true
+    }
+    if (message?.action === 'START_DICTATION_COMMAND' || message?.type === 'START_DICTATION_COMMAND') {
+      let targetEl = armedTarget?.element
+      if (!targetEl && activeDictationField) targetEl = activeDictationField
+      if (!targetEl && isEditableTextInput(document.activeElement)) targetEl = document.activeElement
+      if (!targetEl && lastSnappedPoint) {
+        const res = resolveTarget(lastSnappedPoint)
+        if (res && isEditableTextInput(res.element)) targetEl = res.element
+      }
+      if (!targetEl) {
+        targetEl = document.querySelector('input[type="search"], input[name*="search" i], input[placeholder*="search" i], input[type="text"], textarea')
+      }
+      if (targetEl && isEditableTextInput(targetEl)) {
+        startFieldDictation(targetEl)
+        disarmTarget()
+        sendResponse({ success: true, element: targetEl.tagName })
+      } else {
+        sendResponse({ success: false, error: 'No text area found to dictate into.' })
+      }
+      return true
+    }
+    if (message?.action === 'EXECUTE_SEARCH' || message?.type === 'EXECUTE_SEARCH') {
+      const field = activeDictationField || (isEditableTextInput(document.activeElement) ? document.activeElement : null)
+      if (field) {
+        stopFieldDictation('search')
+        sendResponse({ success: true, executed: true })
+        return true
+      }
+    }
+    if (message?.action === 'INSERT_DICTATION' || message?.type === 'INSERT_DICTATION') {
+      const target =
+        activeDictationField ||
+        (isEditableTextInput(document.activeElement) ? document.activeElement : null) ||
+        document.querySelector('textarea:focus, input:focus') ||
+        (document.getElementById('typingInputField') ? document.getElementById('typingInputField') : null)
+      if (target && message.text) {
+        if (!activeDictationField) {
+          activeDictationField = target
+          try { target.focus?.() } catch (_) {}
+        }
+        const now = Date.now()
+        if (!window.__lastDictationHandled || (now - window.__lastDictationHandled > 200)) {
+          window.__lastDictationHandled = now
+          insertTextIntoElement(target, message.text)
+        }
+        cursorOverlay?.showStatus(`✍️ Typed: "${message.text.slice(0, 24)}"`)
+        setTimeout(() => {
+          if (activeDictationField) {
+            cursorOverlay?.showStatus('✍️ Speak to write (say "Done" or "Search")')
+          }
+        }, 1600)
+        sendResponse({ success: true })
+        return true
+      }
+    }
+  })
+
+  window.addEventListener('handsfree:voice_click', () => {
+    handleVoiceClick()
+  })
 }
 
 function sendStatusUpdate() {
@@ -330,6 +537,42 @@ function isDockTarget(target) {
 function updateInteraction(snappedPosition, mappedPoint) {
   const target = resolveTarget(snappedPosition)
 
+  if (activeDictationField) {
+    if (!activeDictationField.isConnected) {
+      stopFieldDictation('disconnected')
+    } else {
+      // While dictating into a field, suspend dwell completely so cursor does NOT dwell on the field or anything else
+      cancelDwell()
+      disarmTarget()
+    }
+
+    lastDrawnPoint = snappedPosition
+    setCursorTarget(snappedPosition)
+
+    if (cursorOverlay) {
+      cursorOverlay.updateTarget(null)
+      cursorOverlay.setMagneticParams(config.magneticRadius, config.snapStrength)
+    }
+
+    if (!nudgeActive && !nudgeDecelerating && !scrollActive) {
+      pulseHover(snappedPosition)
+    }
+
+    checkScrollLeave()
+    updateEdgeScroll(mappedPoint, null)
+    return
+  }
+
+  if (armedTarget) {
+    const keepArmed =
+      isNearTarget(armedTarget, snappedPosition, DWELL_EDGE_MARGIN * 2) ||
+      (target !== null && sameLogicalTarget(target, armedTarget))
+
+    if (!keepArmed) {
+      disarmTarget()
+    }
+  }
+
   if (currentDwellTarget) {
     const keepDwelling =
       isNearTarget(currentDwellTarget, snappedPosition, DWELL_EDGE_MARGIN) ||
@@ -337,11 +580,11 @@ function updateInteraction(snappedPosition, mappedPoint) {
 
     if (!keepDwelling) {
       cancelDwell()
-      if (target) {
+      if (target && (!armedTarget || !sameLogicalTarget(target, armedTarget))) {
         startDwell(target)
       }
     }
-  } else if (target) {
+  } else if (target && (!armedTarget || !sameLogicalTarget(target, armedTarget))) {
     startDwell(target)
   }
 
@@ -472,6 +715,91 @@ function captureCalibrationPoint() {
   }
 }
 
+function armTargetForVoiceClick(target) {
+  if (!target || !target.element) return
+  armedTarget = target
+  debugLog('content', 'dwell:armed', { tagName: target.tagName })
+  cursorOverlay?.setArmed(true)
+  targetHighlighter?.setArmed(true)
+
+  if (isEditableTextInput(target.element)) {
+    cursorOverlay?.showStatus('🎙️ Dwell complete! Say "Dictate" (or "Click") to start typing')
+  } else {
+    const rawText = (
+      target.element.innerText ||
+      target.element.getAttribute('aria-label') ||
+      target.element.title ||
+      target.element.value ||
+      ''
+    ).trim().replace(/\s+/g, ' ')
+    const shortText = rawText ? `"${rawText.slice(0, 24)}${rawText.length > 24 ? '…' : ''}"` : target.tagName.toUpperCase()
+    cursorOverlay?.showStatus(`🎙️ Dwell complete! Say "Click" to open ${shortText}`)
+  }
+  window.dispatchEvent(new CustomEvent('handsfree:target_armed', { detail: { target } }))
+}
+
+function disarmTarget() {
+  if (!armedTarget) return
+  armedTarget = null
+  cursorOverlay?.setArmed(false)
+  targetHighlighter?.setArmed(false)
+  cursorOverlay?.hideStatus()
+  debugLog('content', 'dwell:disarmed')
+}
+
+function handleVoiceClick() {
+  let targetToClick = armedTarget
+
+  if (!targetToClick && currentDwellTarget) {
+    targetToClick = currentDwellTarget
+    cancelDwell()
+  }
+
+  if (!targetToClick && lastSnappedPoint) {
+    targetToClick = resolveTarget(lastSnappedPoint)
+  }
+
+  if (!targetToClick && lastDrawnPoint) {
+    const el = document.elementFromPoint(lastDrawnPoint.x, lastDrawnPoint.y)
+    if (el && !el.closest('[class*="handsfree-"]')) {
+      const clickable = el.closest('a, button, input, textarea, [role="button"], [tabindex]') || el
+      targetToClick = {
+        element: clickable,
+        center: lastDrawnPoint,
+        tagName: clickable.tagName.toLowerCase(),
+        rect: clickable.getBoundingClientRect(),
+      }
+    }
+  }
+
+  if (targetToClick && targetToClick.element) {
+    debugLog('content', 'voice:click:execute', { tagName: targetToClick.tagName })
+    const isTextInput = isEditableTextInput(targetToClick.element)
+    executeClick(targetToClick, true)
+    cursorOverlay?.flashClick()
+    disarmTarget()
+
+    if (isTextInput) {
+      return { success: true, label: 'text input' }
+    }
+
+    const label = (
+      targetToClick.element.innerText ||
+      targetToClick.element.getAttribute('aria-label') ||
+      targetToClick.element.title ||
+      targetToClick.tagName
+    ).trim().replace(/\s+/g, ' ').slice(0, 30)
+
+    cursorOverlay?.showStatus(`✓ Clicked: ${label || 'target'}`)
+    setTimeout(() => cursorOverlay?.hideStatus(), 1600)
+    return { success: true, label }
+  }
+
+  cursorOverlay?.showStatus('⚠️ No link or button focused under cursor')
+  setTimeout(() => cursorOverlay?.hideStatus(), 1500)
+  return { success: false, error: 'No target focused under cursor.' }
+}
+
 function startDwell(target) {
   currentDwellTarget = target
   const dock = isDockTarget(target)
@@ -487,7 +815,7 @@ function startDwell(target) {
     if (dragActive) {
       endDrag()
     } else {
-      executeClick(element)
+      armTargetForVoiceClick(target)
     }
   })
   debugLog('content', 'dwell:start', { tagName: target.tagName, slider })
@@ -499,21 +827,44 @@ function cancelDwell() {
   if (dragActive) endDrag()
 }
 
-function executeClick(target) {
+function executeClick(target, isVoice = false) {
   const dock = isDockTarget(target)
   const now = Date.now()
-  if (!dock && now - lastClickTime < CLICK_COOLDOWN) return
+  if (!dock && !isVoice && now - lastClickTime < CLICK_COOLDOWN) return
   lastClickTime = now
 
   if (!target.element.isConnected) return
 
-  debugLog('content', 'dwell:click', { tagName: target.tagName })
+  debugLog('content', 'click:execute', { tagName: target.tagName, isVoice })
   cursorOverlay?.flashClick()
 
   const point = lastDrawnPoint || target.center
   dispatchClickSequence(target.element, point.x, point.y)
   const element = target.element
   element.focus?.()
+
+  if (isEditableTextInput(element)) {
+    startFieldDictation(element)
+    return
+  }
+
+  const anchor = element.closest('a')
+  if (anchor && anchor.href && !anchor.href.startsWith('javascript:')) {
+    try {
+      anchor.click()
+    } catch (_) {}
+    if (anchor.target === '_blank') {
+      window.open(anchor.href, '_blank')
+    } else {
+      setTimeout(() => {
+        if (window.location.href !== anchor.href) {
+          window.location.assign(anchor.href)
+        }
+      }, 120)
+    }
+  } else if (typeof element.click === 'function') {
+    element.click()
+  }
 }
 
 function startDrag(target) {
@@ -782,6 +1133,7 @@ function updateEdgeScroll(mappedPoint, target) {
 function setEnabled(enabled) {
   trackingEnabled = enabled
   if (!enabled) {
+    disarmTarget()
     cancelDwell()
     cancelRecenter()
     stopScrollDrive()

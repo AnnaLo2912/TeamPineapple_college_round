@@ -1,0 +1,23 @@
+{
+  "name": "handsfree-tier1-system-software",
+  "version": "1.0.0",
+  "description": "Tier 1 Native Desktop System Software for accessibility, OS automation, screen dictation, and auto-boot.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node main.js",
+    "enable-startup": "node -e \"import('./startupManager.js').then(m => m.enableAutoStartup())\"",
+    "disable-startup": "node -e \"import('./startupManager.js').then(m => m.disableAutoStartup())\"",
+    "test-dictator": "node -e \"import('./screenDictator.js').then(m => m.announceActiveWindow())\"",
+    "test-actions": "node -e \"import('./systemActions.js').then(m => m.executeCommand('open file explorer'))\""
+  },
+  "keywords": [
+    "accessibility",
+    "screen-reader",
+    "system-software",
+    "handsfree",
+    "assistive-technology"
+  ],
+  "author": "Team Pineapple",
+  "license": "ISC"
+}

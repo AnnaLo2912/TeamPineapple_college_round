@@ -55,7 +55,9 @@
     {
       "resources": [
         "models/*",
-        "models/wasm/*"
+        "models/wasm/*",
+        "evaluation.html",
+        "evaluation.js"
       ],
       "matches": ["<all_urls>"]
     }

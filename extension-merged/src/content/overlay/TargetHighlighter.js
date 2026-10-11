@@ -57,6 +57,17 @@ export class TargetHighlighter {
     this.currentTarget = null
   }
 
+  setArmed(isArmed) {
+    if (!this.highlightElement) return
+    if (isArmed) {
+      this.highlightElement.style.boxShadow =
+        '0 0 0 3px #22c55e, 0 0 20px 6px rgba(34, 197, 94, 0.65)'
+    } else {
+      this.highlightElement.style.boxShadow =
+        '0 0 0 2px #4ecdc4, 0 0 12px 4px rgba(78, 205, 196, 0.4)'
+    }
+  }
+
   destroy() {
     this.highlightElement?.remove()
     this.highlightElement = null

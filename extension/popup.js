@@ -617,6 +617,9 @@ document.addEventListener('DOMContentLoaded', () => {
       'read', 'read links', 'read results', 'read top links', 'read search results', 'read result links',
       'read hotels', 'read top hotels', 'read places', 'read restaurants',
       'what are the hotels', 'what are the results', 'tell me the results', 'tell me the hotels', 'repeat results',
+      'show numbers', 'show links', 'show badges', 'numbers', 'show numbered links', 'numbered links',
+      'read numbers', 'read numbered links', 'dictate links', 'dictate numbers',
+      'what are the numbers', 'what are the links', 'next links', 'more links', 'next numbers',
       'blind mode', 'eyes free', 'eyes free mode', 'enable blind mode', 'start blind mode',
       'disable blind mode', 'stop blind mode', 'exit blind mode', 'turn off blind mode',
       'scroll down', 'scroll up', 'page down', 'page up',
@@ -1524,13 +1527,12 @@ document.addEventListener('DOMContentLoaded', () => {
   let isNumbersOverlayActive = false;
 
   async function toggleNumberedLinksOverlay() {
-    const res = await sendToActiveTab({ action: 'TOGGLE_NUMBERED_LINKS' });
+    const res = await sendToActiveTab({ action: 'TOGGLE_NUMBERED_LINKS', dictate: true });
     if (res && res.success) {
       isNumbersOverlayActive = !isNumbersOverlayActive;
       updateNumbersBtnUI(isNumbersOverlayActive, res.count);
       if (isNumbersOverlayActive) {
-        setUIState(State.COMPLETED, `Numbered links active (${res.count || 0} items). Say "Click [number]".`);
-        speakText(`Numbered links shown. ${res.count || ''} items found.`);
+        setUIState(State.COMPLETED, `Numbered links active (${res.count || 0} items). Reading numbers aloud...`);
       } else {
         setUIState(State.COMPLETED, 'Numbered links hidden.');
       }
@@ -1708,7 +1710,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res && res.success) {
           setUIState(State.COMPLETED, `Reading ${res.count || 0} results. Say "Click link 1" to open.`);
         } else {
-          setUIState(State.ERROR, res?.error || 'No search results found to read.');
+          // Non-search page fallback: automatically activate and dictate numbered links
+          sendToActiveTab({ action: 'SHOW_NUMBERED_LINKS', dictate: true }).then(numRes => {
+            if (numRes && numRes.success) {
+              isNumbersOverlayActive = true;
+              updateNumbersBtnUI(true, numRes.count);
+              setUIState(State.COMPLETED, `Numbered links active (${numRes.count || 0} items). Reading numbers aloud...`);
+            } else {
+              setUIState(State.ERROR, res?.error || numRes?.error || 'No links found to read.');
+            }
+          });
         }
       });
       return;
@@ -1737,22 +1748,44 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Numbered Links Voice Commands
-    if (text === 'show numbers' || text === 'show links' || text === 'show badges' || text === 'numbers') {
-      messageText.textContent = 'Command: Show numbered links';
-      sendToActiveTab({ action: 'SHOW_NUMBERED_LINKS' }).then(res => {
+    // Numbered Links Voice Commands (Show, Read, Dictate)
+    if (
+      text === 'show numbers' ||
+      text === 'show links' ||
+      text === 'show badges' ||
+      text === 'numbers' ||
+      text === 'show numbered links' ||
+      text === 'numbered links' ||
+      text === 'read numbers' ||
+      text === 'read numbered links' ||
+      text === 'dictate links' ||
+      text === 'dictate numbers' ||
+      text === 'what are the numbers' ||
+      text === 'what are the links'
+    ) {
+      messageText.textContent = 'Command: Dictate numbered links';
+      sendToActiveTab({ action: 'SHOW_NUMBERED_LINKS', dictate: true }).then(res => {
         isNumbersOverlayActive = true;
         updateNumbersBtnUI(true, res?.count);
-        setUIState(State.COMPLETED, `Showing ${res?.count || 0} numbered links.`);
-        speakText(`Showing ${res?.count || ''} links.`);
+        setUIState(State.COMPLETED, `Numbered links active (${res?.count || 0} items). Reading numbers aloud...`);
       });
       return;
-    } else if (text === 'hide numbers' || text === 'hide links' || text === 'hide badges') {
+    } else if (text === 'hide numbers' || text === 'hide links' || text === 'hide badges' || text === 'hide numbered links') {
       messageText.textContent = 'Command: Hide numbered links';
       sendToActiveTab({ action: 'HIDE_NUMBERED_LINKS' }).then(() => {
         isNumbersOverlayActive = false;
         updateNumbersBtnUI(false, 0);
         setUIState(State.COMPLETED, 'Hidden link numbers.');
+      });
+      return;
+    }
+
+    if (text === 'next links' || text === 'more links' || text === 'read more links' || text === 'next numbers') {
+      messageText.textContent = 'Command: Next links';
+      sendToActiveTab({ action: 'DICTATE_NUMBERED_LINKS', startIndex: 10, limit: 10 }).then(res => {
+        if (res && res.success) {
+          setUIState(State.COMPLETED, `Reading next ${res.count || 0} links.`);
+        }
       });
       return;
     }
@@ -1787,9 +1820,11 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (text === 'resume' || text === 'resume reading' || text === 'continue reading') {
       messageText.textContent = 'Command: Resume reading';
       pauseOrResumeReading();
-    } else if (text === 'stop' || text === 'stop reading') {
+    } else if (text === 'stop' || text === 'stop reading' || text === 'cancel') {
       messageText.textContent = 'Command: Stop reading';
+      sendToActiveTab({ action: 'STOP_DICTATING_LINKS' });
       stopReadingPage();
+      return;
     } else if (text === 'repeat' || text === 'repeat that' || text === 'repeat section') {
       messageText.textContent = 'Command: Repeat section';
       repeatCurrentSection();

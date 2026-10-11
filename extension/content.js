@@ -762,7 +762,7 @@
     });
   }
 
-  function showNumberedLinks() {
+  function showNumberedLinks(autoDictate = true) {
     clearNumberedLinks();
     const overlay = getOrCreateHintsOverlay();
 
@@ -835,10 +835,176 @@
 
     isHintsVisible = true;
     console.log(`[Handsfree] Displayed ${activeHints.length} numbered link badges`);
+
+    if (autoDictate && activeHints.length > 0) {
+      setTimeout(() => {
+        dictateNumberedLinks(0, 10);
+      }, 350);
+    }
+
     return { success: true, count: activeHints.length };
   }
 
+  // --- Numbered Links Dictator for Blind / Eyes-Free Users ---
+  let isDictatingNumberedLinks = false;
+  let currentDictationOffset = 0;
+
+  function stopDictatingNumberedLinks() {
+    isDictatingNumberedLinks = false;
+    if (window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
+    // Restore any active highlighted badges to normal gold
+    activeHints.forEach(h => {
+      if (h.badgeEl) {
+        h.badgeEl.style.background = 'linear-gradient(135deg, #ffd700 0%, #f59e0b 100%)';
+        h.badgeEl.style.color = '#0b0f19';
+        h.badgeEl.style.transform = 'translate(-4px, -8px) scale(1)';
+        h.badgeEl.style.boxShadow = '0 2px 6px rgba(0,0,0,0.4)';
+      }
+    });
+  }
+
+  function getHintElementLabel(el, number) {
+    if (!el || !(el instanceof HTMLElement)) return `Link ${number}`;
+
+    let label = (
+      el.getAttribute('aria-label') ||
+      el.getAttribute('title') ||
+      el.getAttribute('alt') ||
+      ''
+    ).trim();
+
+    if (!label) {
+      const img = el.querySelector('img[alt]');
+      if (img && img.alt) {
+        label = img.alt.trim();
+      }
+    }
+
+    if (!label) {
+      const svg = el.querySelector('svg[aria-label], svg title');
+      if (svg) {
+        label = (svg.getAttribute('aria-label') || svg.textContent || '').trim();
+      }
+    }
+
+    if (!label) {
+      const clone = el.cloneNode(true);
+      clone.querySelectorAll('.handsfree-hint-badge').forEach(b => b.remove());
+      label = (clone.innerText || clone.textContent || '').trim();
+    }
+
+    if (!label && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+      label = el.placeholder || el.value || el.name || '';
+    }
+
+    const tag = el.tagName.toLowerCase();
+    const type = (el.getAttribute('type') || '').toLowerCase();
+    const role = el.getAttribute('role') || '';
+
+    let roleDesc = '';
+    if (tag === 'button' || role === 'button' || (tag === 'input' && (type === 'submit' || type === 'button'))) {
+      roleDesc = 'button';
+    } else if (tag === 'a' || role === 'link') {
+      roleDesc = 'link';
+    } else if (tag === 'input' && (type === 'checkbox' || role === 'checkbox')) {
+      roleDesc = el.checked ? 'checkbox checked' : 'checkbox';
+    } else if (tag === 'input' && (type === 'radio' || role === 'radio')) {
+      roleDesc = el.checked ? 'radio selected' : 'radio';
+    } else if (tag === 'input' || tag === 'textarea') {
+      roleDesc = 'input field';
+    }
+
+    label = label.replace(/\s+/g, ' ').trim();
+    if (label.length > 55) {
+      label = label.slice(0, 52) + '...';
+    }
+
+    if (!label) {
+      return roleDesc ? `${roleDesc} ${number}` : `Interactive item ${number}`;
+    }
+
+    if (roleDesc && !label.toLowerCase().includes(roleDesc)) {
+      return `${label}, ${roleDesc}`;
+    }
+    return label;
+  }
+
+  async function dictateNumberedLinks(startIndex = 0, limit = 10) {
+    if (!isHintsVisible || activeHints.length === 0) {
+      showNumberedLinks(false);
+    }
+
+    if (activeHints.length === 0) {
+      playEarconError();
+      speakScreenText('No clickable links found on this page.');
+      return { success: false, error: 'No links found' };
+    }
+
+    stopDictatingNumberedLinks();
+    isDictatingNumberedLinks = true;
+    currentDictationOffset = startIndex;
+
+    playEarconResultPing();
+
+    const itemsToRead = activeHints.slice(startIndex, startIndex + limit);
+    const totalCount = activeHints.length;
+
+    // Intro announcement
+    const introText = startIndex === 0
+      ? `Numbered links active. Found ${totalCount} interactive items. Reading the first ${Math.min(limit, totalCount)} links:`
+      : `Reading links ${startIndex + 1} to ${startIndex + itemsToRead.length}:`;
+
+    await speakScreenText(introText);
+
+    // Read items sequentially, highlighting the corresponding badge
+    for (let i = 0; i < itemsToRead.length; i++) {
+      if (!isDictatingNumberedLinks || !isHintsVisible) break;
+
+      const item = itemsToRead[i];
+      const itemLabel = getHintElementLabel(item.element, item.number);
+
+      // Highlight active badge in glowing cyan
+      if (item.badgeEl) {
+        item.badgeEl.style.background = 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)';
+        item.badgeEl.style.color = '#ffffff';
+        item.badgeEl.style.transform = 'translate(-4px, -10px) scale(1.35)';
+        item.badgeEl.style.boxShadow = '0 0 16px #06b6d4, 0 4px 10px rgba(0,0,0,0.5)';
+      }
+
+      const phrase = `Number ${item.number}: ${itemLabel}.`;
+      await speakScreenText(phrase);
+
+      // Return badge to gold
+      if (item.badgeEl) {
+        item.badgeEl.style.background = 'linear-gradient(135deg, #ffd700 0%, #f59e0b 100%)';
+        item.badgeEl.style.color = '#0b0f19';
+        item.badgeEl.style.transform = 'translate(-4px, -8px) scale(1)';
+        item.badgeEl.style.boxShadow = '0 2px 6px rgba(0,0,0,0.4)';
+      }
+    }
+
+    if (isDictatingNumberedLinks) {
+      const remaining = totalCount - (startIndex + itemsToRead.length);
+      let closingText = 'Say "Click link" followed by a number to open.';
+      if (remaining > 0) {
+        closingText = `${remaining} more links on page. Say "Click link" and a number to open, or say "Next links" to hear the rest.`;
+      }
+      await speakScreenText(closingText);
+      isDictatingNumberedLinks = false;
+    }
+
+    return {
+      success: true,
+      count: itemsToRead.length,
+      total: totalCount,
+      items: itemsToRead.map(h => ({ number: h.number, label: getHintElementLabel(h.element, h.number) }))
+    };
+  }
+
   function clearNumberedLinks() {
+    stopDictatingNumberedLinks();
     if (hintsOverlay) {
       hintsOverlay.innerHTML = '';
     }
@@ -847,21 +1013,22 @@
     return { success: true };
   }
 
-  function toggleNumberedLinks() {
+  function toggleNumberedLinks(autoDictate = true) {
     if (isHintsVisible) {
       return clearNumberedLinks();
     } else {
-      return showNumberedLinks();
+      return showNumberedLinks(autoDictate);
     }
   }
 
   function clickNumberedLink(targetNum) {
+    stopDictatingNumberedLinks();
     const num = parseInt(targetNum, 10);
     if (isNaN(num)) return { success: false, error: 'Invalid link number provided.' };
 
     // Auto-generate hints if not active
     if (!isHintsVisible || activeHints.length === 0) {
-      showNumberedLinks();
+      showNumberedLinks(false);
     }
 
     const item = activeHints.find(h => h.number === num);
@@ -1655,14 +1822,45 @@
       return;
     }
 
-    // 4. Read Links / Results
-    if (norm === 'read links' || norm === 'read results' || norm === 'read top links' || norm === 'read search results' || norm === 'read result links') {
-      readSearchResults();
+    // 4. Read Links / Results & Numbered Links Dictation
+    if (
+      norm === 'read links' ||
+      norm === 'read results' ||
+      norm === 'read top links' ||
+      norm === 'read search results' ||
+      norm === 'read result links' ||
+      norm === 'read numbers' ||
+      norm === 'read numbered links' ||
+      norm === 'dictate links' ||
+      norm === 'dictate numbers' ||
+      norm === 'what are the links' ||
+      norm === 'what are the numbers'
+    ) {
+      const isGoogleSearch = /google\.[a-z.]+/i.test(window.location.hostname) && window.location.pathname.includes('/search');
+      if (isGoogleSearch && (norm.includes('result') || norm === 'read links')) {
+        readSearchResults();
+      } else {
+        showNumberedLinks(true);
+      }
       return;
     }
 
-    // 5. Click Link N / Result N
-    const clickMatch = norm.match(/^(?:click|open)\s+(?:link\s+|result\s+)?(\d{1,2})$/) || norm.match(/^(?:link|result)\s+(\d{1,2})$/);
+    if (norm === 'show numbers' || norm === 'show links' || norm === 'show numbered links' || norm === 'numbers' || norm === 'numbered links') {
+      showNumberedLinks(true);
+      return;
+    }
+
+    if (norm === 'next links' || norm === 'more links' || norm === 'read more links' || norm === 'next numbers') {
+      dictateNumberedLinks(currentDictationOffset + 10, 10);
+      return;
+    }
+
+    // 5. Click Link N / Result N / Number N
+    const clickMatch =
+      norm.match(/^(?:click|open|select|choose|press|go\s*to)\s+(?:link\s+|result\s+|number\s+|#)?(\d{1,3})$/) ||
+      norm.match(/^(?:link|result|number)\s+#?(\d{1,3})$/) ||
+      (isHintsVisible && /^\d{1,3}$/.test(norm) ? norm.match(/^(\d{1,3})$/) : null);
+
     if (clickMatch && clickMatch[1]) {
       const num = parseInt(clickMatch[1], 10);
       const res = clickSearchResult(num);
@@ -1699,6 +1897,7 @@
 
     // 8. Stop / Cancel
     if (norm === 'stop' || norm === 'stop reading' || norm === 'cancel') {
+      stopDictatingNumberedLinks();
       window.speechSynthesis.cancel();
       playEarconClick();
       return;
@@ -1859,15 +2058,26 @@
         break;
 
       case 'SHOW_NUMBERED_LINKS':
-        sendResponse(showNumberedLinks());
+        sendResponse(showNumberedLinks(request.dictate !== false));
         break;
 
       case 'HIDE_NUMBERED_LINKS':
+        stopDictatingNumberedLinks();
         sendResponse(clearNumberedLinks());
         break;
 
       case 'TOGGLE_NUMBERED_LINKS':
-        sendResponse(toggleNumberedLinks());
+        sendResponse(toggleNumberedLinks(request.dictate !== false));
+        break;
+
+      case 'READ_NUMBERED_LINKS':
+      case 'DICTATE_NUMBERED_LINKS':
+        dictateNumberedLinks(request.startIndex || 0, request.limit || 10).then(res => sendResponse(res));
+        return true;
+
+      case 'STOP_DICTATING_LINKS':
+        stopDictatingNumberedLinks();
+        sendResponse({ success: true });
         break;
 
       case 'CLICK_NUMBERED_LINK':
